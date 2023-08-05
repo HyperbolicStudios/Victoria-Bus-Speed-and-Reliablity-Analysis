@@ -57,7 +57,7 @@ def generate_lines():
         
         length = line.length
         
-        n = int(length/400)
+        n = int(length/200)
 
         points = ([line.interpolate((i/n), normalized=True) for i in range(1, n)])
 
@@ -98,4 +98,4 @@ def test():
     plt.show()
     return
 
-#test()
+test()
