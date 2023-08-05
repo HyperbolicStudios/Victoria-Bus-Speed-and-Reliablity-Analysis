@@ -40,7 +40,7 @@ def update_map(selected_hour, map_figure):
         geojson=filtered_data.geometry,  # Use your actual GeoDataFrame here
         locations=filtered_data.index,  # Column in the GeoDataFrame with the location IDs
         color='Speed',  # Column in the GeoDataFrame with the data to be plotted
-        mapbox_style='carto-positron',
+        mapbox_style='carto-darkmatter',
         #colour on a red - yellow - green scale
         color_continuous_scale=["red", "yellow", "green"],
         #colour scale from 0 to 50
