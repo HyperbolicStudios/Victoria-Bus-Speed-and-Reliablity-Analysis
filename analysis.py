@@ -1,6 +1,6 @@
 import geopandas as gpd
 import pandas as pd
-
+import matplotlib.pyplot as plt
 from create_shapes import generate_lines
 
 def retrieve_timeline():
@@ -54,3 +54,4 @@ def aggregate_data():
     return
 
 aggregate_data()
+

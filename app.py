@@ -44,7 +44,7 @@ def update_map(selected_hour, map_figure):
         #colour on a red - yellow - green scale
         color_continuous_scale=["red", "yellow", "green"],
         #colour scale from 0 to 50
-        range_color=(0, 50),
+        range_color=(10, 50),
         zoom=11,
         center={'lat': 48.4566, 'lon': -123.3763},
         hover_data=['Speed', 'Hour'],

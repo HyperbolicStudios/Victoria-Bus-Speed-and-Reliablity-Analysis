@@ -70,7 +70,7 @@ def generate_lines():
         
         all_lines = gpd.GeoDataFrame(pd.concat([all_lines,line]), geometry="geometry")
 
-    all_lines['buffer'] = all_lines.buffer(10,cap_style=2)
+    all_lines['buffer'] = all_lines.buffer(20)
     all_lines['delete'] = False
 
     for i in range(1, len(all_lines)):
@@ -97,5 +97,3 @@ def test():
     all_lines.plot(ax=ax, column='colour', cmap='tab20')
     plt.show()
     return
-
-test()
