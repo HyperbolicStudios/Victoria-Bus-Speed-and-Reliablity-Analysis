@@ -7,6 +7,7 @@ gdf = gpd.read_file("analysis.geojson")
 
 # Set up the Dash app
 app = dash.Dash(__name__)
+server = app.server
 
 # Define the layout of the app
 app.layout = html.Div([
@@ -66,4 +67,4 @@ def update_map(selected_hour, map_figure):
 
 # Run the Dash app
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run_server(debug=True)
