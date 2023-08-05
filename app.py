@@ -16,7 +16,7 @@ app.layout = html.Div([
         id='hour-slider',
         min=gdf['Hour'].min(),
         max=gdf['Hour'].max(),
-        value=gdf['Hour'].min(),
+        value=8,
         marks={str(hour): str(hour) for hour in gdf['Hour'].unique()},
         step=None
     )
