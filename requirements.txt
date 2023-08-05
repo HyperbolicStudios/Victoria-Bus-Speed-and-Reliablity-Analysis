@@ -1,7 +1,7 @@
 dash==2.9.3
 geopandas==0.12.2
 matplotlib==3.5.3
-numpy==1.15.1
+numpy==1.17
 pandas==1.5.3
 plotly==5.14.1
 Shapely==2.0.1
