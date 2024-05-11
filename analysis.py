@@ -310,12 +310,6 @@ def runtimes_by_date():
         fig.add_trace(go.Scatter(x=df.Date, y=df.mean_runtime, mode='lines', name="Route " + str(df.Route.iloc[0]), fill='tonexty', hovertemplate="<b>Mean Runtime: %{y} minutes</b><br>Date: %{x}"))
         fig.add_trace(go.Scatter(x=df.Date, y=df['bot_percentile'], mode='lines', line=dict(width=0), showlegend=False, fill='tonexty', hovertemplate="<b>5th Percentile: %{y} minutes</b><br>Date: %{x}"))
 
-        #update x-axis to show date, no time
-        fig.update_xaxes(
-            dtick="M1",
-            tickformat="%b\n%Y",
-            ticklabelmode="period")
-
         fig.update_layout(title='Route {} Runtime by Date'.format(df.Route.iloc[0]),
                         xaxis_title='Date',
                         yaxis_title='Mean Runtime (minutes)')
