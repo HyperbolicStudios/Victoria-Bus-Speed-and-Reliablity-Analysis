@@ -1,7 +1,14 @@
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from create_shapes import generate_lines
+import plotly.express as px
+import plotly.graph_objects as go
+
+trips = pd.read_csv("static/trips.csv")
+routes = pd.read_csv("static/routes.csv")
+stop_times = pd.read_csv("static/stop_times.csv")
 
 def retrieve_timeline():
     timeline = pd.read_csv("timeline.csv")
@@ -10,11 +17,24 @@ def retrieve_timeline():
     timeline = gpd.GeoDataFrame(timeline, geometry=gpd.points_from_xy(timeline.x, timeline.y))
     timeline = timeline.set_crs("EPSG:4326").to_crs("EPSG:26910")
 
-    timeline = timeline[['Time', 'Speed', 'geometry']]
+    departure_times = stop_times.groupby("trip_id").first().reset_index()[["trip_id", "departure_time"]]
+    departure_times = departure_times.rename(columns={"departure_time": "trip_departure_time"})
+    timeline = timeline.merge(departure_times, left_on="Trip ID", right_on="trip_id")
 
+    #add direction to data using trip_id
+    timeline['direction'] = timeline.merge(trips[['trip_id', 'direction_id']], left_on="Trip ID", right_on="trip_id").direction_id
+
+    #add headsign to data using trip_id
+    
+    timeline['headsign'] = timeline.merge(trips[['trip_id', 'trip_headsign']], left_on="Trip ID", right_on="trip_id").trip_headsign
+    
+    #turn 'Time' into Datetime column
+    timeline['Datetime'] = pd.to_datetime(timeline['Time'], unit='s', utc=True)
+    #convert to PST
+    timeline['Datetime'] = timeline['Datetime'].dt.tz_convert('America/Los_Angeles')
     return(timeline)
 
-def aggregate_data():
+def system_map():
     route_segments = generate_lines()
     print(len(route_segments))
     timeline = retrieve_timeline()
@@ -49,9 +69,368 @@ def aggregate_data():
     timeline.Hour = timeline.Hour.round(0)
     timeline.Speed = timeline.Speed.round(0)
 
-    timeline.to_file("analysis.geojson", driver="GeoJSON")
+    fig = px.choropleth_mapbox(timeline, geojson=timeline.geometry, locations=timeline.index, color="Speed",
+                            mapbox_style="carto-positron",
+                            opacity=0.7,
+                            labels={'Speed':'Average Speed (km/hr)'},
+                            color_continuous_scale=["red", "yellow", "green"],
+                            #colour scale from 0 to 50
+                            range_color=(10, 50),
+                            zoom=11,
+                            center={'lat': 48.4566, 'lon': -123.3763},
+                            hover_data=['Speed']
+                            )
+    
+    fig.update_traces(marker_line_width=0, hovertemplate="<b>Average Speed: %{customdata[0]} km/h<br>")
+    #add title, center it
+    fig.update_layout(title_text="Average All-Day Speed (System-Wide)", title_x=0.5)
+   
+    fig.write_html("docs/plots/system_map.html")
 
     return
 
-aggregate_data()
+def corridor_map():
+    corridors = gpd.read_file("corridors.geojson")
 
+    #add names to each corridor: Mckenzie, Fort St West, Fort St East, Foul Bay, Henderson, Quadra
+    corridors["corridor"] = ["Mckenzie", "Fort St West", "Fort St East", "Foul Bay", "Hillside", "Quadra","Douglas Core","Douglas North"]
+    corridors['Average Speed'] = 0
+    timeline = retrieve_timeline()
+    
+    selected_routes = {
+        "Mckenzie": [26],
+        "Fort St West": [14, 15, 11],
+        "Fort St East": [14, 15, 11],
+        "Foul Bay": [7, 15],
+        "Hillside": [4],
+        "Quadra": [6],
+        "Douglas Core": [95],
+        "Douglas North": [95]
+    }
+ 
+    for corridor in corridors.corridor:
+        filtered_timeline = timeline[timeline.route_short_name.isin(selected_routes[corridor])].reset_index()
+        buffer = corridors[corridors.corridor == corridor].buffer(20, cap_style=2)
+        buffer = gpd.GeoDataFrame(buffer, geometry=buffer, crs="EPSG:26910")
+
+        #filter timeline to only include points within buffer
+        filtered_timeline = filtered_timeline[filtered_timeline.geometry.within(buffer.unary_union)]
+
+        #calculate average speed and update corridor dataframd
+        avg_speed = filtered_timeline.Speed.mean()
+        avg_speed = round(avg_speed, 1)
+        corridors.loc[corridors.corridor == corridor, "Average Speed"] = avg_speed
+
+    corridors.geometry = corridors.buffer(20).to_crs("EPSG:4326")
+
+    #map with plotly
+    fig = px.choropleth_mapbox(corridors, geojson=corridors.geometry, locations=corridors.index, color="Average Speed",
+                            mapbox_style="carto-positron",
+                            opacity=0.7,
+                            labels={'Average Speed':'Average Speed (km/hr)'},
+                            color_continuous_scale=["red", "yellow", "green"],
+                            #colour scale from 0 to 50
+                            range_color=(0, 50),
+                            zoom=11,
+                            center={'lat': 48.4566, 'lon': -123.3763},
+                            hover_data=['corridor', 'Average Speed']
+                            )
+    
+    fig.update_traces(marker_line_width=0, hovertemplate="<b>%{customdata[0]}</b><br>Average Speed: %{customdata[1]} km/h<br>")
+    #add title, center it
+    fig.update_layout(title_text="Average Speed by Corridor", title_x=0.5)
+   
+    fig.write_html("docs/plots/corridor_map.html")
+    return
+
+def all_routes_bar_chart():
+    timeline = retrieve_timeline()
+
+    #rename route_short_name to route
+    timeline = timeline.rename(columns={"route_short_name": "route"})
+    #format as string
+    timeline.route = timeline.route.astype(str)
+
+    #create Hour column - note that this is PST
+    timeline["Time"] = pd.to_datetime(timeline["Time"], utc=True, unit='s')
+    timeline["Time"] = timeline["Time"].dt.tz_convert('America/Los_Angeles')
+    timeline['Hour'] = timeline.Time.dt.hour
+
+    timeline = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
+
+    timeline = timeline.groupby(["route"]).agg({"Speed": "mean"}).reset_index()
+
+    timeline = timeline.sort_values(by="Speed", ascending=True)
+
+    #set timeline.Frequency to one of Local, FTN, RTN
+    timeline['Frequency'] = "Local"
+    for route in timeline.route:
+        if route in ["70", "95", "15"]:
+            timeline.loc[timeline.route == route, "Frequency"] = "RTN"
+        elif route in ["4", "6", "26", "14", "27", "28"]:
+            timeline.loc[timeline.route == route, "Frequency"] = "FTN"
+    
+    color_discrete_map = {"Local": "grey", "FTN": "blue", "RTN": "orange"}
+
+    fig = px.bar(timeline, y="Speed", x="route", orientation="v", color="Frequency", color_discrete_map=color_discrete_map, labels={"Speed": "Average Speed (km/hr)", "route": "Route"},
+    #order bars by speed, highest to lowest
+    category_orders={"route": timeline.route})
+
+    fig.update_layout(title_text="Average Speed by Route", title_x=0.5)
+    fig.show()
+
+    fig.write_html("docs/plots/all_routes_bar_chart.html")
+
+def COV_bar_chart():
+    timeline = retrieve_timeline()
+    timeline["Time"] = pd.to_datetime(timeline["Time"], utc=True, unit='s')
+    timeline["Time"] = timeline["Time"].dt.tz_convert('America/Los_Angeles')
+    #convert 
+    timeline['day-month-yr'] = timeline.Time.dt.strftime("%d-%m-%Y")
+
+    timeline['UID'] = timeline['day-month-yr'] + timeline['Trip ID'].astype(str)
+
+    #calculate the runtime for each trip, by finding the difference between the first and last timestamp
+    runtime = timeline.groupby("UID").agg({"Time": ["min", "max"]}).reset_index()
+    
+    runtime['runtime'] = runtime['Time']['max'] - runtime['Time']['min']
+
+    runtime = runtime.merge(timeline[['UID', 'Trip ID']], left_on="UID", right_on="UID")
+
+    print(runtime)
+            
+def map_speed_by_hour():
+    timeline = retrieve_timeline()
+
+    #use trips to get a list of route_ids that have "Downtown" in their trip_headsign
+    trips = pd.read_csv("static/trips.csv")
+    trips = trips.merge(routes[['route_id', 'route_short_name']], left_on="route_id", right_on="route_id")
+
+    route_ids = trips[trips.trip_headsign.str.contains("Downtown")].route_short_name.unique()
+
+    #remove all rows with a time of 24:XX:XX
+    def remove_24(time):
+        if time[:2] == "24":
+            return False
+        else:
+            return True
+    timeline = timeline[timeline.trip_departure_time.apply(remove_24)]
+
+    #convert timeline time to datetime
+    timeline["Time"] = pd.to_datetime(timeline["Time"], utc=True, unit='s')
+    #filter to only include points collected on a Monday
+    timeline = timeline[timeline.Time.dt.dayofweek == 0]
+
+    timeline.trip_departure_time = pd.to_datetime(timeline.trip_departure_time, format="%H:%M:%S")
+
+    for direction in ['Inbound', 'Outbound']:
+
+        fig = px.line(title="Average Speed for Select Routes Serving Downtown ({})".format(direction), labels={"x": "Hour", "y": "Average Speed (km/hr)"})
+        
+        for route in route_ids:
+            filtered_timeline = timeline[timeline.route_short_name == route]
+            #filter to only include points going in the specified direction
+            ##add trip headsign to timeline
+            filtered_timeline = filtered_timeline.merge(trips[['trip_id', 'trip_headsign']], left_on="Trip ID", right_on="trip_id")
+            if direction == "Inbound":
+                #filter by headsigns with "Downtown"
+                filtered_timeline = filtered_timeline[filtered_timeline.trip_headsign.str.contains("Downtown")]
+            elif direction == "Outbound":
+                #filter by headsigns without "Downtown"
+                filtered_timeline = filtered_timeline[~filtered_timeline.trip_headsign.str.contains("Downtown")]
+            
+            #aggregate by trip_departure_time
+            filtered_timeline = filtered_timeline.groupby("trip_departure_time").agg({"Speed": "mean", "trip_headsign": "first"}).reset_index()
+            #create plotly line chart
+            filtered_timeline['route_name'] = "Route " + str(route)
+
+            #order by trip_departure_time
+            filtered_timeline = filtered_timeline.sort_values(by="trip_departure_time")
+            fig.add_scatter(x=filtered_timeline.trip_departure_time, y=filtered_timeline.Speed, text=filtered_timeline.trip_headsign, name = "Route " + str(route))
+        
+        fig.update_traces(hovertemplate="<b>%{text}</b><br>Dep. Time: %{x}<br>Average Speed: %{y} km/h<br>")
+
+        #range: 0 to 60
+        fig.update_yaxes(range=[0, 60])
+
+        fig.write_html("docs/plots/{}_speed_by_hour.html".format(direction))
+
+    #distinct plots for each route
+    
+    for route in timeline.route_short_name.unique():
+        fig = px.line(title="Average Speed by Time for Route " + str(route), labels={"x": "Hour", "y": "Average Speed (km/hr)"})
+        filtered_timeline = timeline[timeline.route_short_name == route]
+        for headsign in filtered_timeline.headsign.unique():
+            data = filtered_timeline[filtered_timeline.headsign == headsign]
+            data = data.groupby("trip_departure_time").agg({"Speed": "mean"}).reset_index()
+            data = data.sort_values(by="trip_departure_time")
+            data['headsign'] = headsign
+            fig.add_scatter(x=data.trip_departure_time, y=data.Speed, text=data['headsign'], name = headsign)
+        fig.update_yaxes(range=[0, 60])
+        fig.update_traces(hovertemplate="<b>%{text}</b><br>Dep. Time: %{x}<br>Average Speed: %{y} km/h<br>")
+        fig.write_html("docs/plots/route_charts_by_time/route " + str(route) + ".html")
+        
+    return
+            
+def map_speed_by_date():
+    timeline = retrieve_timeline()
+    timeline.Time = pd.to_datetime(timeline.Time, utc=True, unit='s')
+    timeline.Time = timeline.Time.dt.tz_convert('America/Los_Angeles')
+
+    timeline['Date'] = timeline.Time.dt.date
+    #aggregate by date
+    aggregated_timeline = timeline.groupby("Date").agg({"Speed": "mean"}).reset_index()
+    aggregated_timeline.Speed = aggregated_timeline.Speed.round(1)
+
+    aggregated_timeline['day_of_week'] = aggregated_timeline.Date.apply(lambda x: x.strftime("%A"))
+    #create plotly line chart
+    fig = px.line(aggregated_timeline, x="Date", y="Speed", hover_data=["day_of_week"])
+    fig.update_traces(hovertemplate="<b>%{customdata[0]}, %{x}</b><br>Average Speed: %{y} km/h")
+    fig.update_layout(title_text="Average Speed by Date", title_x=0.5)
+    fig.update_yaxes(range=[0, 90])
+    fig.write_html("docs/plots/speed_by_date.html")
+
+    for route in timeline.route_short_name.unique():
+        aggregated_timeline = timeline[timeline.route_short_name == route]
+        aggregated_timeline = aggregated_timeline.groupby("Date").agg({"Speed": "mean"}).reset_index()
+        aggregated_timeline.Speed = aggregated_timeline.Speed.round(1)
+        aggregated_timeline['day_of_week'] = aggregated_timeline.Date.apply(lambda x: x.strftime("%A"))
+        fig = px.line(aggregated_timeline, x="Date", y="Speed", hover_data=["day_of_week"])
+        fig.update_traces(hovertemplate="<b>%{customdata[0]}, %{x}</b><br>Average Speed: %{y} km/h")
+        fig.update_layout(title_text="Average Speed by Date for Route " + str(route), title_x=0.5)
+        fig.update_yaxes(range=[0, 90])
+        fig.write_html("docs/plots/route_charts_by_date/route " + str(route) + ".html")
+
+    return
+
+def runtimes_by_time():
+    timeline = retrieve_timeline()
+
+    #remove rows with a speed of 0
+    timeline = timeline[timeline.Speed != 0]
+
+    #ensure only weekdays are included
+    timeline['day_of_week'] = timeline.Datetime.dt.dayofweek
+    timeline = timeline[(timeline.day_of_week != 5) & (timeline.day_of_week != 6)]
+
+    #Create a new date column, in the format YYYY-MM-DD
+    timeline['Date'] = timeline.Datetime.dt.date
+   
+    #create a new custom_id column, which is the concatenation of the date and trip_id
+    timeline['custom_id'] = timeline['Date'].astype(str) + timeline['Trip ID'].astype(str)
+    #aggregate by custom_id, taking the difference between the first and last timestamp. This is the runtime
+    runtimes_df = timeline.groupby(["custom_id"]).agg({"Time": ["min", "max"], 'Route': 'first','trip_departure_time': 'first'}).reset_index()
+
+    runtimes_df['runtime'] = (runtimes_df['Time']['max'] - runtimes_df['Time']['min'])/60
+
+    #departure time is in XX:XX:XX format. Get first two characters
+    runtimes_df['Departure_Hour'] = runtimes_df['trip_departure_time']['first'].str[:2]
+
+    #turn two dimensional column names into one dimensional. Just the first element
+    runtimes_df.columns = runtimes_df.columns.get_level_values(0)
+
+    #aggregate by route, departure hour, and headsign. Get the average runtime, bot percentile, and top percentile. Use groupby, agg, and lambda functions
+    runtimes_df = runtimes_df.groupby(['Route', 'Departure_Hour']).agg({'runtime': ['mean', lambda x: np.percentile(x, 5), lambda x: np.percentile(x, 95)]}).reset_index()
+
+    
+    runtimes_df.columns = ['Route', 'Departure_Hour', 'mean_runtime', 'bot_percentile', 'top_percentile']
+
+    #replace NaN values of bot and top percentile with mean runtime
+    runtimes_df['5th_percentile'] = runtimes_df['bot_percentile'].fillna(runtimes_df['mean_runtime'])
+    runtimes_df['95th_percentile'] = runtimes_df['top_percentile'].fillna(runtimes_df['mean_runtime'])
+
+    for route in runtimes_df.Route.unique():
+        fig = go.Figure()
+
+        df = runtimes_df[runtimes_df.Route == route]
+
+        df = df.sort_values(by='Departure_Hour')
+
+        #round to 2 decimal places
+        df['mean_runtime'] = df['mean_runtime'].round(2)
+
+        #plot the mean runtime, with bot and top percentiles        
+        fig.add_trace(go.Scatter(x=df.Departure_Hour, y=df['top_percentile'], mode='lines', line=dict(width=0), showlegend=False, hovertemplate="<b>95th percentile:</b>%{y} minutes"))
+        fig.add_trace(go.Scatter(x=df.Departure_Hour, y=df.mean_runtime, mode='lines', name="Route " + str(df.Route.iloc[0]), fill='tonexty', hovertemplate="<b>Mean:</b>%{y} minutes"))
+        fig.add_trace(go.Scatter(x=df.Departure_Hour, y=df['bot_percentile'], mode='lines', line=dict(width=0), showlegend=False, fill='tonexty', hovertemplate="<b>5th percentile:</b>%{y} minutes"))
+
+        fig.update_layout(title='Route {} Runtime by Departure Hour'.format(df.Route.iloc[0]),
+                        xaxis_title='Departure Hour',
+                        yaxis_title='Mean Runtime (minutes)')
+        
+        #centre title
+        fig.update_layout(title_x=0.5)
+        #add a subtitle
+        fig.add_annotation(text="5th and 95th Percentiles Shown", xref="paper", yref="paper", x=0.5, y=0.05, showarrow=False)
+
+        # Show the plot
+        fig.write_html("docs/plots/runtime_by_time/route " + str(route) + ".html")
+    
+    return
+
+def runtimes_by_date():
+    timeline = retrieve_timeline()
+
+    #remove rows with a speed of 0
+    timeline = timeline[timeline.Speed != 0]
+
+    #ensure only weekdays are included
+    timeline['day_of_week'] = timeline.Datetime.dt.dayofweek
+    timeline = timeline[(timeline.day_of_week != 5) & (timeline.day_of_week != 6)]
+
+    #Create a new date column, in the format YYYY-MM-DD
+    timeline['Date'] = timeline.Datetime.dt.date
+   
+    #create a new custom_id column, which is the concatenation of the date and trip_id
+    timeline['custom_id'] = timeline['Date'].astype(str) + timeline['Trip ID'].astype(str)
+    #aggregate by custom_id, taking the difference between the first and last timestamp. This is the runtime
+    runtimes_df = timeline.groupby(["custom_id"]).agg({"Time": ["min", "max"], 'Date': 'first', 'Route': 'first','trip_departure_time': 'first'}).reset_index()
+
+    runtimes_df['runtime'] = (runtimes_df['Time']['max'] - runtimes_df['Time']['min'])/60
+
+    #turn two dimensional column names into one dimensional. Just the first element
+    runtimes_df.columns = runtimes_df.columns.get_level_values(0)
+
+    #aggregate by date, Route. Get the average runtime, bot percentile, and top percentile. Use groupby, agg, and lambda functions
+    runtimes_df = runtimes_df.groupby(['Date', 'Route']).agg({'runtime': ['mean', lambda x: np.percentile(x, 5), lambda x: np.percentile(x, 95)]}).reset_index()
+
+    #columns
+    runtimes_df.columns = ['Date', 'Route', 'mean_runtime', 'bot_percentile', 'top_percentile']
+    
+    #create datetime object from date
+    runtimes_df['Date'] = pd.to_datetime(runtimes_df['Date'])
+    #sort low to high
+    runtimes_df = runtimes_df.sort_values(by='Date')
+
+    #round to 2 decimal places
+    runtimes_df['mean_runtime'] = runtimes_df['mean_runtime'].round(2)
+    runtimes_df['bot_percentile'] = runtimes_df['bot_percentile'].round(2)
+    runtimes_df['top_percentile'] = runtimes_df['top_percentile'].round(2)
+
+    for route in runtimes_df.Route.unique():
+        df = runtimes_df[runtimes_df.Route == route]
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df.Date, y=df['top_percentile'], mode='lines', line=dict(width=0), showlegend=False, hovertemplate="<b>95th Percentile: %{y} minutes</b>"))
+        fig.add_trace(go.Scatter(x=df.Date, y=df.mean_runtime, mode='lines', name="Route " + str(df.Route.iloc[0]), fill='tonexty', hovertemplate="<b>Mean Runtime: %{y} minutes</b>"))
+        fig.add_trace(go.Scatter(x=df.Date, y=df['bot_percentile'], mode='lines', line=dict(width=0), showlegend=False, fill='tonexty', hovertemplate="<b>5th Percentile: %{y} minutes</b>"))
+
+        #update x-axis to show date, no time
+        fig.update_xaxes(
+            dtick="M1",
+            tickformat="%b\n%Y",
+            ticklabelmode="period")
+
+        fig.update_layout(title='Route {} Runtime by Date'.format(df.Route.iloc[0]),
+                        xaxis_title='Date',
+                        yaxis_title='Mean Runtime (minutes)')
+        
+        #centre title
+        fig.update_layout(title_x=0.5)
+        #add a subtitle
+        fig.add_annotation(text="5th and 95th Percentiles Shown", xref="paper", yref="paper", x=0.5, y=0.05, showarrow=False)
+        fig.write_html("docs/plots/runtime_by_date/route " + str(route) + ".html")
+    
+    return
+
+runtimes_by_date()
+runtimes_by_time()

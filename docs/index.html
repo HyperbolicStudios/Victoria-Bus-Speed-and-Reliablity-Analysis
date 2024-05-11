@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+    
+<head>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <script src="https://kit.fontawesome.com/895917e848.js" crossorigin="anonymous"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+</head>
+
+<body>
+    <section>
+    <nav>
+        <h1>Bus Speed/Reliability Metrics</h2>
+        <h2><a id="l1" class="active" href="#p1">System Map</a></h2>
+        <h2><a id="l2" href="#p2">Corridor Map</a></h2>
+        <h2><a id="l3" href="#p3">Speed by Route</a></h2>
+        <h2><a id="l4" href="#p4">Speed by time of day</a></h2>
+        <h2><a id="l5" href="#p5">Speed over time</a></h2>
+    </nav>    
+    <div class="main">
+
+        <div id="p1" class="page">
+            <iframe src="plots/system_map.html" width="95%" height="100%"></iframe>
+        </div>
+       
+        <div id="p2" class="page">
+            <iframe src="plots/corridor_map.html" width="95%" height="100%"></iframe>
+        </div>
+
+        <div id="p3" class="page">
+            <iframe src="plots/all_routes_bar_chart.html" width="95%" height="100%"></iframe>
+        </div>
+
+        <div id="p4" class="page-options">
+            <div><label>Select a route: </label>
+                <select onchange="changeIframeUrl(this.value)" id="speeds_by_time">
+                    <option value="">Choose a Route</option>
+                    <option value="2">Route 1</option>
+                    <option value="2">Route 2</option>
+                    <option value="3">Route 3</option>
+                    <option value="4">Route 4</option>
+                    <option value="5">Route 5</option>
+                    <option value="6">Route 6</option>
+                    <option value="7">Route 7</option>
+                    <option value="8">Route 8</option>
+                    <option value="9">Route 9</option>
+                    <option value="10">Route 10</option>
+                    <option value="11">Route 11</option>
+                    <option value="12">Route 12</option>
+                    <option value="13">Route 13</option>
+                    <option value="14">Route 14</option>
+                    <option value="15">Route 15</option>
+                    <option value="17">Route 17</option>
+                    <option value="21">Route 21</option>
+                    <option value="22">Route 22</option>
+                    <option value="24">Route 24</option>
+                    <option value="25">Route 25</option>
+                    <option value="26">Route 26</option>
+                    <option value="27">Route 27</option>
+                    <option value="28">Route 28</option>
+                    <option value="30">Route 30</option>
+                    <option value="31">Route 31</option>
+                    <option value="32">Route 32</option>
+                    <option value="35">Route 35</option>
+                    <option value="39">Route 39</option>
+                    <option value="43">Route 43</option>
+                    <option value="46">Route 46</option>
+                    <option value="47">Route 47</option>
+                    <option value="48">Route 48</option>
+                    <option value="51">Route 51</option>
+                    <option value="52">Route 52</option>
+                    <option value="53">Route 53</option>
+                    <option value="54">Route 54</option>
+                    <option value="55">Route 55</option>
+                    <option value="56">Route 56</option>
+                    <option value="57">Route 57</option>
+                    <option value="58">Route 58</option>
+                    <option value="59">Route 59</option>
+                    <option value="60">Route 60</option>
+                    <option value="61">Route 61</option>
+                    <option value="63">Route 63</option>
+                    <option value="64">Route 64</option>
+                    <option value="65">Route 65</option>
+                    <option value="70">Route 70</option>
+                    <option value="71">Route 71</option>
+                    <option value="72">Route 72</option>
+                    <option value="75">Route 75</option>
+                    <option value="81">Route 81</option>
+                    <option value="82">Route 82</option>
+                    <option value="83">Route 83</option>
+                    <option value="85">Route 85</option>
+                    <option value="87">Route 87</option>
+                    <option value="88">Route 88</option>
+                    <option value="95">Route 95</option>
+                </select>
+            
+            </div>
+            <iframe id="speed-time-chart" src="plots/runtime_by_time/route 4.html" width="95%" height="100%"></iframe>
+        </div>
+
+        <div id="p5" class="page-options">
+            <div>
+                <label>Select a route: </label>
+                <select onchange="changeIframeUrl_date_chart(this.value)" id="speeds_by_date">
+                    <option value="">Choose a Route</option>
+                    <option value="1">Route 1</option>
+                    <option value="2">Route 2</option>
+                    <option value="3">Route 3</option>
+                    <option value="4">Route 4</option>
+                    <option value="5">Route 5</option>
+                    <option value="6">Route 6</option>
+                    <option value="7">Route 7</option>
+                    <option value="8">Route 8</option>
+                    <option value="9">Route 9</option>
+                    <option value="10">Route 10</option>
+                    <option value="11">Route 11</option>
+                    <option value="12">Route 12</option>
+                    <option value="13">Route 13</option>
+                    <option value="14">Route 14</option>
+                    <option value="15">Route 15</option>
+                    <option value="17">Route 17</option>
+                    <option value="21">Route 21</option>
+                    <option value="22">Route 22</option>
+                    <option value="24">Route 24</option>
+                    <option value="25">Route 25</option>
+                    <option value="26">Route 26</option>
+                    <option value="27">Route 27</option>
+                    <option value="28">Route 28</option>
+                    <option value="30">Route 30</option>
+                    <option value="31">Route 31</option>
+                    <option value="32">Route 32</option>
+                    <option value="35">Route 35</option>
+                    <option value="39">Route 39</option>
+                    <option value="43">Route 43</option>
+                    <option value="46">Route 46</option>
+                    <option value="47">Route 47</option>
+                    <option value="48">Route 48</option>
+                    <option value="51">Route 51</option>
+                    <option value="52">Route 52</option>
+                    <option value="53">Route 53</option>
+                    <option value="54">Route 54</option>
+                    <option value="55">Route 55</option>
+                    <option value="56">Route 56</option>
+                    <option value="57">Route 57</option>
+                    <option value="58">Route 58</option>
+                    <option value="59">Route 59</option>
+                    <option value="60">Route 60</option>
+                    <option value="61">Route 61</option>
+                    <option value="63">Route 63</option>
+                    <option value="64">Route 64</option>
+                    <option value="65">Route 65</option>
+                    <option value="70">Route 70</option>
+                    <option value="71">Route 71</option>
+                    <option value="72">Route 72</option>
+                    <option value="75">Route 75</option>
+                    <option value="81">Route 81</option>
+                    <option value="82">Route 82</option>
+                    <option value="83">Route 83</option>
+                    <option value="85">Route 85</option>
+                    <option value="87">Route 87</option>
+                    <option value="88">Route 88</option>
+                    <option value="95">Route 95</option>
+                </select>
+            
+            </div>
+            <iframe id="speed-date-chart" src="plots/runtime_by_date/route 4.html" width="95%" height="100%"></iframe>
+        </div>
+    </div>
+</div>
+
+    </section>
+
+<footer id="footer">
+
+    <p>&copy Mark Edwardson 2024</p>    
+
+    <p><a title="My Github" href="https://github.com/HyperbolicStudios/"><i class="fa-brands fa-github fa-2xl" style="color: white"></i></a></p>
+
+  </footer>
+
+</body>
+<script src="script.js"></script>
+
+</html>
