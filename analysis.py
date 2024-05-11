@@ -199,110 +199,6 @@ def COV_bar_chart():
 
     print(runtime)
             
-def map_speed_by_hour():
-    timeline = retrieve_timeline()
-
-    #use trips to get a list of route_ids that have "Downtown" in their trip_headsign
-    trips = pd.read_csv("static/trips.csv")
-    trips = trips.merge(routes[['route_id', 'route_short_name']], left_on="route_id", right_on="route_id")
-
-    route_ids = trips[trips.trip_headsign.str.contains("Downtown")].route_short_name.unique()
-
-    #remove all rows with a time of 24:XX:XX
-    def remove_24(time):
-        if time[:2] == "24":
-            return False
-        else:
-            return True
-    timeline = timeline[timeline.trip_departure_time.apply(remove_24)]
-
-    #convert timeline time to datetime
-    timeline["Time"] = pd.to_datetime(timeline["Time"], utc=True, unit='s')
-    #filter to only include points collected on a Monday
-    timeline = timeline[timeline.Time.dt.dayofweek == 0]
-
-    timeline.trip_departure_time = pd.to_datetime(timeline.trip_departure_time, format="%H:%M:%S")
-
-    for direction in ['Inbound', 'Outbound']:
-
-        fig = px.line(title="Average Speed for Select Routes Serving Downtown ({})".format(direction), labels={"x": "Hour", "y": "Average Speed (km/hr)"})
-        
-        for route in route_ids:
-            filtered_timeline = timeline[timeline.route_short_name == route]
-            #filter to only include points going in the specified direction
-            ##add trip headsign to timeline
-            filtered_timeline = filtered_timeline.merge(trips[['trip_id', 'trip_headsign']], left_on="Trip ID", right_on="trip_id")
-            if direction == "Inbound":
-                #filter by headsigns with "Downtown"
-                filtered_timeline = filtered_timeline[filtered_timeline.trip_headsign.str.contains("Downtown")]
-            elif direction == "Outbound":
-                #filter by headsigns without "Downtown"
-                filtered_timeline = filtered_timeline[~filtered_timeline.trip_headsign.str.contains("Downtown")]
-            
-            #aggregate by trip_departure_time
-            filtered_timeline = filtered_timeline.groupby("trip_departure_time").agg({"Speed": "mean", "trip_headsign": "first"}).reset_index()
-            #create plotly line chart
-            filtered_timeline['route_name'] = "Route " + str(route)
-
-            #order by trip_departure_time
-            filtered_timeline = filtered_timeline.sort_values(by="trip_departure_time")
-            fig.add_scatter(x=filtered_timeline.trip_departure_time, y=filtered_timeline.Speed, text=filtered_timeline.trip_headsign, name = "Route " + str(route))
-        
-        fig.update_traces(hovertemplate="<b>%{text}</b><br>Dep. Time: %{x}<br>Average Speed: %{y} km/h<br>")
-
-        #range: 0 to 60
-        fig.update_yaxes(range=[0, 60])
-
-        fig.write_html("docs/plots/{}_speed_by_hour.html".format(direction))
-
-    #distinct plots for each route
-    
-    for route in timeline.route_short_name.unique():
-        fig = px.line(title="Average Speed by Time for Route " + str(route), labels={"x": "Hour", "y": "Average Speed (km/hr)"})
-        filtered_timeline = timeline[timeline.route_short_name == route]
-        for headsign in filtered_timeline.headsign.unique():
-            data = filtered_timeline[filtered_timeline.headsign == headsign]
-            data = data.groupby("trip_departure_time").agg({"Speed": "mean"}).reset_index()
-            data = data.sort_values(by="trip_departure_time")
-            data['headsign'] = headsign
-            fig.add_scatter(x=data.trip_departure_time, y=data.Speed, text=data['headsign'], name = headsign)
-        fig.update_yaxes(range=[0, 60])
-        fig.update_traces(hovertemplate="<b>%{text}</b><br>Dep. Time: %{x}<br>Average Speed: %{y} km/h<br>")
-        fig.write_html("docs/plots/route_charts_by_time/route " + str(route) + ".html")
-        
-    return
-            
-def map_speed_by_date():
-    timeline = retrieve_timeline()
-    timeline.Time = pd.to_datetime(timeline.Time, utc=True, unit='s')
-    timeline.Time = timeline.Time.dt.tz_convert('America/Los_Angeles')
-
-    timeline['Date'] = timeline.Time.dt.date
-    #aggregate by date
-    aggregated_timeline = timeline.groupby("Date").agg({"Speed": "mean"}).reset_index()
-    aggregated_timeline.Speed = aggregated_timeline.Speed.round(1)
-
-    aggregated_timeline['day_of_week'] = aggregated_timeline.Date.apply(lambda x: x.strftime("%A"))
-    #create plotly line chart
-    fig = px.line(aggregated_timeline, x="Date", y="Speed", hover_data=["day_of_week"])
-    fig.update_traces(hovertemplate="<b>%{customdata[0]}, %{x}</b><br>Average Speed: %{y} km/h")
-    fig.update_layout(title_text="Average Speed by Date", title_x=0.5)
-    fig.update_yaxes(range=[0, 90])
-    fig.write_html("docs/plots/speed_by_date.html")
-
-    for route in timeline.route_short_name.unique():
-        aggregated_timeline = timeline[timeline.route_short_name == route]
-        aggregated_timeline = aggregated_timeline.groupby("Date").agg({"Speed": "mean"}).reset_index()
-        aggregated_timeline.Speed = aggregated_timeline.Speed.round(1)
-        aggregated_timeline['day_of_week'] = aggregated_timeline.Date.apply(lambda x: x.strftime("%A"))
-        fig = px.line(aggregated_timeline, x="Date", y="Speed", hover_data=["day_of_week"])
-        fig.update_traces(hovertemplate="<b>%{customdata[0]}, %{x}</b><br>Average Speed: %{y} km/h")
-        fig.update_layout(title_text="Average Speed by Date for Route " + str(route), title_x=0.5)
-        fig.update_yaxes(range=[0, 90])
-        fig.write_html("docs/plots/route_charts_by_date/route " + str(route) + ".html")
-
-    return
-
 def runtimes_by_time():
     timeline = retrieve_timeline()
 
@@ -410,9 +306,9 @@ def runtimes_by_date():
     for route in runtimes_df.Route.unique():
         df = runtimes_df[runtimes_df.Route == route]
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df.Date, y=df['top_percentile'], mode='lines', line=dict(width=0), showlegend=False, hovertemplate="<b>95th Percentile: %{y} minutes</b>"))
-        fig.add_trace(go.Scatter(x=df.Date, y=df.mean_runtime, mode='lines', name="Route " + str(df.Route.iloc[0]), fill='tonexty', hovertemplate="<b>Mean Runtime: %{y} minutes</b>"))
-        fig.add_trace(go.Scatter(x=df.Date, y=df['bot_percentile'], mode='lines', line=dict(width=0), showlegend=False, fill='tonexty', hovertemplate="<b>5th Percentile: %{y} minutes</b>"))
+        fig.add_trace(go.Scatter(x=df.Date, y=df['top_percentile'], mode='lines', line=dict(width=0), showlegend=False, hovertemplate="<b>95th Percentile: %{y} minutes</b><br>Date: %{x}"))
+        fig.add_trace(go.Scatter(x=df.Date, y=df.mean_runtime, mode='lines', name="Route " + str(df.Route.iloc[0]), fill='tonexty', hovertemplate="<b>Mean Runtime: %{y} minutes</b><br>Date: %{x}"))
+        fig.add_trace(go.Scatter(x=df.Date, y=df['bot_percentile'], mode='lines', line=dict(width=0), showlegend=False, fill='tonexty', hovertemplate="<b>5th Percentile: %{y} minutes</b><br>Date: %{x}"))
 
         #update x-axis to show date, no time
         fig.update_xaxes(
