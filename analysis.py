@@ -270,10 +270,6 @@ def runtimes_by_date():
     #remove rows with a speed of 0
     timeline = timeline[timeline.Speed != 0]
 
-    #ensure only weekdays are included
-    timeline['day_of_week'] = timeline.Datetime.dt.dayofweek
-    timeline = timeline[(timeline.day_of_week != 5) & (timeline.day_of_week != 6)]
-
     #Create a new date column, in the format YYYY-MM-DD
     timeline['Date'] = timeline.Datetime.dt.date
    
