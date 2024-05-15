@@ -22,8 +22,15 @@ def download_from_mongo():
     mydoc = mycol.find(myquery)
     df = pd.DataFrame(list(mydoc))
     df = df.drop(columns = ["_id"])
-    print(df)
+    
     df.to_csv("timeline.csv", index = False)
+
+    #convert Time column (in epoch time) to human-readable time
+    df['Time'] = pd.to_datetime(df['Time'], unit='s')
+    #convert to pst
+    df['Time'] = df['Time'].dt.tz_localize('UTC').dt.tz_convert('America/Los_Angeles')
+    print("Data downloaded from MongoDB. {} points. Time range: {} to {}".format(len(df), df['Time'].min(), df['Time'].max()))
+
     return
 
 download_from_mongo()

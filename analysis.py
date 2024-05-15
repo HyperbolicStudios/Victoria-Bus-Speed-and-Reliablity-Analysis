@@ -6,10 +6,6 @@ from create_shapes import generate_lines
 import plotly.express as px
 import plotly.graph_objects as go
 
-trips = pd.read_csv("static/trips.csv")
-routes = pd.read_csv("static/routes.csv")
-stop_times = pd.read_csv("static/stop_times.csv")
-
 def retrieve_timeline():
     timeline = pd.read_csv("timeline.csv")
 
@@ -17,17 +13,6 @@ def retrieve_timeline():
     timeline = gpd.GeoDataFrame(timeline, geometry=gpd.points_from_xy(timeline.x, timeline.y))
     timeline = timeline.set_crs("EPSG:4326").to_crs("EPSG:26910")
 
-    departure_times = stop_times.groupby("trip_id").first().reset_index()[["trip_id", "departure_time"]]
-    departure_times = departure_times.rename(columns={"departure_time": "trip_departure_time"})
-    timeline = timeline.merge(departure_times, left_on="Trip ID", right_on="trip_id")
-
-    #add direction to data using trip_id
-    timeline['direction'] = timeline.merge(trips[['trip_id', 'direction_id']], left_on="Trip ID", right_on="trip_id").direction_id
-
-    #add headsign to data using trip_id
-    
-    timeline['headsign'] = timeline.merge(trips[['trip_id', 'trip_headsign']], left_on="Trip ID", right_on="trip_id").trip_headsign
-    
     #turn 'Time' into Datetime column
     timeline['Datetime'] = pd.to_datetime(timeline['Time'], unit='s', utc=True)
     #convert to PST
@@ -36,18 +21,12 @@ def retrieve_timeline():
 
 def system_map():
     route_segments = generate_lines()
-    print(len(route_segments))
     timeline = retrieve_timeline()
  
     #create a buffer around each line in lines, and create a new geodataframe with the buffers
     buffers = gpd.GeoDataFrame(geometry=route_segments.buffer(20, cap_style=2), crs="EPSG:26910")
 
-    #convert timestamp to datetime
-    timeline["Time"] = pd.to_datetime(timeline["Time"], utc=True, unit='s')
-    #convert to PST
-    timeline["Time"] = timeline["Time"].dt.tz_convert('America/Los_Angeles')
-
-    timeline['Hour'] = timeline.Time.dt.hour
+    timeline['Hour'] = timeline.Datetime.dt.hour
     
     buffers = buffers.reset_index()
     buffers['buffer_id'] = buffers.index
@@ -55,18 +34,15 @@ def system_map():
     #spatial merge. Find all the points that are within buffers, and retain buffer geometry.
     timeline = gpd.sjoin(buffers, timeline, how="left", predicate="intersects")
   
-    print(len(timeline.buffer_id.unique()))
     timeline = timeline[["Hour", "Speed", "buffer_id", "geometry"]]
 
-    #aggregate by Hour and buffer_id. Aggregate Speed to average and geometry to first
-    timeline = timeline.groupby(["Hour", "buffer_id"]).agg({"Speed": "mean", "geometry": "first"}).reset_index()
+    #aggregate by buffer_id. Aggregate Speed to average and geometry to first
+    timeline = timeline.groupby(["buffer_id"]).agg({"Speed": "mean", "geometry": "first"}).reset_index()
 
     timeline = gpd.GeoDataFrame(timeline, geometry="geometry", crs="EPSG:26910")
 
     timeline = timeline.to_crs("WGS-84")
-    print(len(timeline))
 
-    timeline.Hour = timeline.Hour.round(0)
     timeline.Speed = timeline.Speed.round(0)
 
     fig = px.choropleth_mapbox(timeline, geojson=timeline.geometry, locations=timeline.index, color="Speed",
@@ -109,7 +85,7 @@ def corridor_map():
     }
  
     for corridor in corridors.corridor:
-        filtered_timeline = timeline[timeline.route_short_name.isin(selected_routes[corridor])].reset_index()
+        filtered_timeline = timeline[timeline.Route.isin(selected_routes[corridor])].reset_index()
         buffer = corridors[corridors.corridor == corridor].buffer(20, cap_style=2)
         buffer = gpd.GeoDataFrame(buffer, geometry=buffer, crs="EPSG:26910")
 
@@ -146,59 +122,34 @@ def corridor_map():
 def all_routes_bar_chart():
     timeline = retrieve_timeline()
 
-    #rename route_short_name to route
-    timeline = timeline.rename(columns={"route_short_name": "route"})
-    #format as string
-    timeline.route = timeline.route.astype(str)
-
-    #create Hour column - note that this is PST
-    timeline["Time"] = pd.to_datetime(timeline["Time"], utc=True, unit='s')
-    timeline["Time"] = timeline["Time"].dt.tz_convert('America/Los_Angeles')
-    timeline['Hour'] = timeline.Time.dt.hour
+    timeline['Hour'] = timeline.Datetime.dt.hour
 
     timeline = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
 
-    timeline = timeline.groupby(["route"]).agg({"Speed": "mean"}).reset_index()
+    timeline = timeline.groupby(["Route"]).agg({"Speed": "mean"}).reset_index()
 
     timeline = timeline.sort_values(by="Speed", ascending=True)
+    
+    timeline['Route'] = timeline.Route.astype(str)
+
 
     #set timeline.Frequency to one of Local, FTN, RTN
     timeline['Frequency'] = "Local"
-    for route in timeline.route:
-        if route in ["70", "95", "15"]:
-            timeline.loc[timeline.route == route, "Frequency"] = "RTN"
-        elif route in ["4", "6", "26", "14", "27", "28"]:
-            timeline.loc[timeline.route == route, "Frequency"] = "FTN"
+    for route in timeline.Route:
+        if route in ['70', '95', '15']:
+            timeline.loc[timeline.Route == route, "Frequency"] = "RTN"
+        elif route in ['4', '6', '26', '14', '27', '28']:
+            timeline.loc[timeline.Route == route, "Frequency"] = "FTN"
     
     color_discrete_map = {"Local": "grey", "FTN": "blue", "RTN": "orange"}
 
-    fig = px.bar(timeline, y="Speed", x="route", orientation="v", color="Frequency", color_discrete_map=color_discrete_map, labels={"Speed": "Average Speed (km/hr)", "route": "Route"},
+    fig = px.bar(timeline, y="Speed", x="Route", orientation="v", color="Frequency", color_discrete_map=color_discrete_map, labels={"Speed": "Average Speed (km/hr)", "route": "Route"},
     #order bars by speed, highest to lowest
-    category_orders={"route": timeline.route})
+    category_orders={"Route": timeline.Route})
 
     fig.update_layout(title_text="Average Speed by Route", title_x=0.5)
-    fig.show()
-
     fig.write_html("docs/plots/all_routes_bar_chart.html")
-
-def COV_bar_chart():
-    timeline = retrieve_timeline()
-    timeline["Time"] = pd.to_datetime(timeline["Time"], utc=True, unit='s')
-    timeline["Time"] = timeline["Time"].dt.tz_convert('America/Los_Angeles')
-    #convert 
-    timeline['day-month-yr'] = timeline.Time.dt.strftime("%d-%m-%Y")
-
-    timeline['UID'] = timeline['day-month-yr'] + timeline['Trip ID'].astype(str)
-
-    #calculate the runtime for each trip, by finding the difference between the first and last timestamp
-    runtime = timeline.groupby("UID").agg({"Time": ["min", "max"]}).reset_index()
-    
-    runtime['runtime'] = runtime['Time']['max'] - runtime['Time']['min']
-
-    runtime = runtime.merge(timeline[['UID', 'Trip ID']], left_on="UID", right_on="UID")
-
-    print(runtime)
-            
+           
 def runtimes_by_time():
     timeline = retrieve_timeline()
 
@@ -215,12 +166,12 @@ def runtimes_by_time():
     #create a new custom_id column, which is the concatenation of the date and trip_id
     timeline['custom_id'] = timeline['Date'].astype(str) + timeline['Trip ID'].astype(str)
     #aggregate by custom_id, taking the difference between the first and last timestamp. This is the runtime
-    runtimes_df = timeline.groupby(["custom_id"]).agg({"Time": ["min", "max"], 'Route': 'first','trip_departure_time': 'first'}).reset_index()
+    runtimes_df = timeline.groupby(["custom_id"]).agg({"Time": ["min", "max"], 'Route': 'first'}).reset_index()
 
     runtimes_df['runtime'] = (runtimes_df['Time']['max'] - runtimes_df['Time']['min'])/60
 
-    #departure time is in XX:XX:XX format. Get first two characters
-    runtimes_df['Departure_Hour'] = runtimes_df['trip_departure_time']['first'].str[:2]
+    #get Time min, and convert it to datetime from epoch
+    runtimes_df['Departure_Hour'] = pd.to_datetime(runtimes_df['Time']['min'], unit='s', utc=True).dt.tz_convert('America/Los_Angeles').dt.hour
 
     #turn two dimensional column names into one dimensional. Just the first element
     runtimes_df.columns = runtimes_df.columns.get_level_values(0)
@@ -276,7 +227,7 @@ def runtimes_by_date():
     #create a new custom_id column, which is the concatenation of the date and trip_id
     timeline['custom_id'] = timeline['Date'].astype(str) + timeline['Trip ID'].astype(str)
     #aggregate by custom_id, taking the difference between the first and last timestamp. This is the runtime
-    runtimes_df = timeline.groupby(["custom_id"]).agg({"Time": ["min", "max"], 'Date': 'first', 'Route': 'first','trip_departure_time': 'first'}).reset_index()
+    runtimes_df = timeline.groupby(["custom_id"]).agg({"Time": ["min", "max"], 'Date': 'first', 'Route': 'first'}).reset_index()
 
     runtimes_df['runtime'] = (runtimes_df['Time']['max'] - runtimes_df['Time']['min'])/60
 
@@ -314,9 +265,9 @@ def runtimes_by_date():
         fig.update_layout(title_x=0.5)
         #add a subtitle
         fig.add_annotation(text="5th and 95th Percentiles Shown", xref="paper", yref="paper", x=0.5, y=0.05, showarrow=False)
+
         fig.write_html("docs/plots/runtime_by_date/route " + str(route) + ".html")
-    
+
     return
 
-runtimes_by_date()
-runtimes_by_time()
+all_routes_bar_chart()

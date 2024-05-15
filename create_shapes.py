@@ -23,9 +23,9 @@ def generate_lines():
               15:0,
               4:0,
               70:0,
-              2:300,
+              2:100,
               27:100,
-              11:100,
+              11:112,
               14:100,
               7:100,
               21:100,
@@ -38,6 +38,7 @@ def generate_lines():
     shapes_static = pd.read_csv("static/shapes.csv")
 
     for route in routes.keys():
+       
         #looking in routes_static what the route_id is for the route
         trip_num = routes[route]
         route_id = routes_static[routes_static["route_short_name"] == route].iloc[0]["route_id"]
@@ -97,3 +98,4 @@ def test():
     all_lines.plot(ax=ax, column='colour', cmap='tab20')
     plt.show()
     return
+
