@@ -187,6 +187,7 @@ def runtimes_by_time():
     runtimes_df['95th_percentile'] = runtimes_df['top_percentile'].fillna(runtimes_df['mean_runtime'])
 
     for route in runtimes_df.Route.unique():
+        print(route)
         fig = go.Figure()
 
         df = runtimes_df[runtimes_df.Route == route]
@@ -270,4 +271,4 @@ def runtimes_by_date():
 
     return
 
-all_routes_bar_chart()
+runtimes_by_time()
