@@ -34,3 +34,16 @@ def download_from_mongo():
     return
 
 download_from_mongo()
+
+def summarize_data():
+    df = pd.read_csv("timeline.csv")
+    #summarize the first date and the last date
+    df['Time'] = pd.to_datetime(df['Time'], unit='s')
+    #pst
+    df['Time'] = df['Time'].dt.tz_localize('UTC').dt.tz_convert('America/Los_Angeles')
+    print("First date: ", df['Time'].min())
+    print("Last date: ", df['Time'].max())
+    return
+
+summarize_data()
+
