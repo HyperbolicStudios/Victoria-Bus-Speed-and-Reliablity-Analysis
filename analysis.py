@@ -5,7 +5,9 @@ import matplotlib.pyplot as plt
 from create_shapes import generate_lines
 import plotly.express as px
 import plotly.graph_objects as go
+import statsmodels.api as sm
 
+#Retrieve the entire timeline (as points). Used for the system and corridor maps
 def retrieve_timeline():
     timeline = pd.read_csv("timeline.csv")
 
@@ -17,7 +19,45 @@ def retrieve_timeline():
     timeline['Datetime'] = pd.to_datetime(timeline['Time'], unit='s', utc=True)
     #convert to PST
     timeline['Datetime'] = timeline['Datetime'].dt.tz_convert('America/Los_Angeles')
+
+    #temporary fix for missing speed data
+    timeline['Header'] = "Route " + timeline['Route'].astype(str)
     return(timeline)
+
+#Produce a summary of each trip-in-time (i.e. trip X on day Y), with average speed, runtime, etc.
+#Used for the runtimes by time and runtimes by date plots
+def summarize_trip_data():
+    timeline = retrieve_timeline()
+
+    #remove rows with a speed of 0 - speeds up processing and we don't want start/end iddling datapoints
+    timeline = timeline[timeline.Speed != 0]
+
+    #Create a new date column, in the format YYYY-MM-DD
+    timeline['Date'] = timeline.Datetime.dt.date
+   
+    #create a new custom_id column, which is the concatenation of the date and trip_id
+    timeline['custom_id'] = timeline['Date'].astype(str) + timeline['Trip ID'].astype(str)
+
+    #aggregate by custom_id, taking the difference between the first and last timestamp. This is the runtime
+    runtimes_df = timeline.groupby(["custom_id"]).agg({"Time": ["min", "max"], 'Date': 'first', 'Route': 'first', 'Header': 'first'}).reset_index()
+
+    runtimes_df['runtime'] = (runtimes_df['Time']['max'] - runtimes_df['Time']['min'])/60
+
+    #turn two dimensional column names into one dimensional. Just the first element
+    runtimes_df.columns = runtimes_df.columns.get_level_values(0)
+
+    #rename the columns
+    runtimes_df.columns = ['custom_id', 'Time_min', 'Time_max', 'Date', 'Route', 'Header', 'runtime']
+
+    #remove anything with runtime greater than 200 minutes (extreme outliers) or under 5 minutes
+    runtimes_df = runtimes_df[(runtimes_df.runtime < 200) & (runtimes_df.runtime > 5)]
+
+    #Create label with time_min. This is the time in epoch time
+    runtimes_df['label'] = pd.to_datetime(runtimes_df['Time_min'], unit='s', utc=True)
+    #convert to PST
+    runtimes_df['label'] = runtimes_df['label'].dt.tz_convert('America/Los_Angeles').dt.strftime('%Y-%m-%d %H:%M:%S')
+
+    return(runtimes_df)
 
 def system_map():
     route_segments = generate_lines()
@@ -151,97 +191,138 @@ def all_routes_bar_chart():
     fig.write_html("docs/plots/all_routes_bar_chart.html")
            
 def runtimes_by_time():
-    timeline = retrieve_timeline()
+    trips = summarize_trip_data()
+    #only pick trips that were on a weekday - use time_min (currently in epoch time) to get the day of the week. Will need to turn epoch to datetime
+    trips = trips[trips.Time_min.apply(lambda x: pd.to_datetime(x, unit='s').weekday() < 5)]
 
-    #remove rows with a speed of 0
-    timeline = timeline[timeline.Speed != 0]
+    #convert time_min to datetime. Data is epoch time, datetime needs to be in PST
+    trips['Time-only'] = pd.to_datetime(trips['Time_min'], unit='s', utc=True)
+    #convert to PST
+    trips['Time-only'] = trips['Time-only'].dt.tz_convert('America/Los_Angeles').dt.strftime('%H:%M:%S')
 
-    #ensure only weekdays are included
-    timeline['day_of_week'] = timeline.Datetime.dt.dayofweek
-    timeline = timeline[(timeline.day_of_week != 5) & (timeline.day_of_week != 6)]
-
-    #Create a new date column, in the format YYYY-MM-DD
-    timeline['Date'] = timeline.Datetime.dt.date
-   
-    #create a new custom_id column, which is the concatenation of the date and trip_id
-    timeline['custom_id'] = timeline['Date'].astype(str) + timeline['Trip ID'].astype(str)
-    #aggregate by custom_id, taking the difference between the first and last timestamp. This is the runtime
-    runtimes_df = timeline.groupby(["custom_id"]).agg({"Time": ["min", "max"], 'Route': 'first'}).reset_index()
-
-    runtimes_df['runtime'] = (runtimes_df['Time']['max'] - runtimes_df['Time']['min'])/60
-
-    #get Time min, and convert it to datetime from epoch
-    runtimes_df['Departure_Hour'] = pd.to_datetime(runtimes_df['Time']['min'], unit='s', utc=True).dt.tz_convert('America/Los_Angeles').dt.hour
-
-    #turn two dimensional column names into one dimensional. Just the first element
-    runtimes_df.columns = runtimes_df.columns.get_level_values(0)
-
-    #aggregate by route, departure hour, and headsign. Get the average runtime, bot percentile, and top percentile. Use groupby, agg, and lambda functions
-    runtimes_df = runtimes_df.groupby(['Route', 'Departure_Hour']).agg({'runtime': ['mean', lambda x: np.percentile(x, 5), lambda x: np.percentile(x, 95)]}).reset_index()
-
+    #create datetime object from Time-only. Give it a date of 1/1/1970. Use the time from Time-only
+    trips['Time-only'] = pd.to_datetime('2000-01-01 ' + trips['Time-only'])
     
-    runtimes_df.columns = ['Route', 'Departure_Hour', 'mean_runtime', 'bot_percentile', 'top_percentile']
+    #increment the date by one day for times before 3am
+    trips.loc[trips['Time-only'].dt.hour < 3, 'Time-only'] += pd.Timedelta(days=1)
 
-    #replace NaN values of bot and top percentile with mean runtime
-    runtimes_df['5th_percentile'] = runtimes_df['bot_percentile'].fillna(runtimes_df['mean_runtime'])
-    runtimes_df['95th_percentile'] = runtimes_df['top_percentile'].fillna(runtimes_df['mean_runtime'])
+    #sort low to high
+    trips = trips.sort_values(by='Time-only')
 
-    for route in runtimes_df.Route.unique():
+    #round runtime to 1 decimal place
+    trips['runtime'] = trips['runtime'].round(1)
+   
+    for route in trips.Route.unique():
         fig = go.Figure()
 
-        df = runtimes_df[runtimes_df.Route == route]
+        for i in range(0, len(trips[trips.Route == route].Header.unique())):
+            header = trips[trips.Route == route].Header.unique()[i]
+            colour = px.colors.qualitative.Plotly[i]
 
-        df = df.sort_values(by='Departure_Hour')
+            df = trips[(trips.Route == route) & (trips.Header == header)]
 
-        #round to 2 decimal places
-        df['mean_runtime'] = df['mean_runtime'].round(2)
+            #calculate 5th and 95th percentile using a central moving average
+            y_5th_perc = df.runtime.rolling(window=15, center=True).apply(lambda x: np.percentile(x, 5), raw=True)
+            y_95th_perc = df.runtime.rolling(window=15, center=True).apply(lambda x: np.percentile(x, 95), raw=True)
 
-        #plot the mean runtime, with bot and top percentiles        
-        fig.add_trace(go.Scatter(x=df.Departure_Hour, y=df['top_percentile'], mode='lines', line=dict(width=0), showlegend=False, hovertemplate="<b>95th percentile:</b>%{y} minutes"))
-        fig.add_trace(go.Scatter(x=df.Departure_Hour, y=df.mean_runtime, mode='lines', name="Route " + str(df.Route.iloc[0]), fill='tonexty', hovertemplate="<b>Mean:</b>%{y} minutes"))
-        fig.add_trace(go.Scatter(x=df.Departure_Hour, y=df['bot_percentile'], mode='lines', line=dict(width=0), showlegend=False, fill='tonexty', hovertemplate="<b>5th percentile:</b>%{y} minutes"))
+            x = df['Time-only'].astype('int64') // 10**9
+            
+            lowess = sm.nonparametric.lowess(df.runtime, x, frac=.3)
+            lowess_5th_perc = sm.nonparametric.lowess(y_5th_perc, x, frac=.3)
+            lowess_95th_perc = sm.nonparametric.lowess(y_95th_perc, x, frac=.3)
 
-        fig.update_layout(title='Route {} Runtime by Departure Hour'.format(df.Route.iloc[0]),
-                        xaxis_title='Departure Hour',
-                        yaxis_title='Mean Runtime (minutes)')
+            y = lowess[:, 1]
+            y_5th_perc = lowess_5th_perc[:, 1]
+            y_95th_perc = lowess_95th_perc[:, 1]
+
+            x=lowess[:, 0],
+            x = pd.to_datetime(lowess[:, 0], unit='s')
+
+            #add 5th and 95th percentile lines
+            fig.add_trace(go.Scatter
+            (
+                x=x,
+                y=y_5th_perc,
+                mode='lines',
+                name=f'{header} 5th Percentile',
+                marker=dict(color=colour),
+                line=dict(color=colour, width=1),
+                hoverinfo='skip',
+                showlegend=False
+            ))
+
+            fig.add_trace(go.Scatter
+            (
+                x=x,
+                y=y_95th_perc,
+                mode='lines',
+                name=f'{header} 95th Percentile',
+                marker=dict(color=colour),
+                line=dict(color=colour, width=1),
+                hoverinfo='skip',
+                fill='tonexty',
+                fillcolor=f'rgba({int(colour[1:3], 16)}, {int(colour[3:5], 16)}, {int(colour[5:7], 16)}, 0.1)',
+                showlegend=False
+            ))
+
+            fig.add_trace(go.Scatter(
+                x=x,
+                y=y,
+                mode='lines',
+                name=f'{header} LOWESS',
+                marker=dict(color=colour),
+                line=dict(color=colour, width=2),
+                showlegend=False
+                
+            ))
+
+            fig.add_trace(go.Scatter(
+                x=df['Time-only'], 
+                y=df.runtime, 
+                mode='markers', 
+                name=header, 
+                marker=dict(color=colour, opacity=0.5), 
+                customdata=df[['Route', 'label', 'Header']],
+                hovertemplate="<b>Runtime: %{y} minutes</b><br>Direction: %{customdata[2]}<br>Departure: %{customdata[1]}<br>Route: %{customdata[0]}<extra></extra>"
+            ))
+            
+        fig.update_layout(legend=dict(
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="right",
+                    x=.99
+                ))
         
-        #centre title
-        fig.update_layout(title_x=0.5)
-        #add a subtitle
+        #add title, center it
+        fig.update_layout(title='Route {} Runtimes by Time'.format(route),
+                xaxis_title='Time',
+                yaxis_title='Runtime (minutes)',
+                title_x=0.5)
+        
         fig.add_annotation(text="5th and 95th Percentiles Shown", xref="paper", yref="paper", x=0.5, y=0.05, showarrow=False)
 
-        # Show the plot
         fig.write_html("docs/plots/runtime_by_time/route " + str(route) + ".html")
-    
-    return
+
+    return  
 
 def runtimes_by_date():
-    timeline = retrieve_timeline()
 
-    #remove rows with a speed of 0
-    timeline = timeline[timeline.Speed != 0]
+    trips = summarize_trip_data()
 
-    #Create a new date column, in the format YYYY-MM-DD
-    timeline['Date'] = timeline.Datetime.dt.date
-   
-    #create a new custom_id column, which is the concatenation of the date and trip_id
-    timeline['custom_id'] = timeline['Date'].astype(str) + timeline['Trip ID'].astype(str)
-    #aggregate by custom_id, taking the difference between the first and last timestamp. This is the runtime
-    runtimes_df = timeline.groupby(["custom_id"]).agg({"Time": ["min", "max"], 'Date': 'first', 'Route': 'first'}).reset_index()
-
-    runtimes_df['runtime'] = (runtimes_df['Time']['max'] - runtimes_df['Time']['min'])/60
-
-    #turn two dimensional column names into one dimensional. Just the first element
-    runtimes_df.columns = runtimes_df.columns.get_level_values(0)
+    #turn trips Time_min into a datetime object
+    trips['Time_min'] = pd.to_datetime(trips['Time_min'], unit='s', utc=True)
+    #convert to PST
+    trips['Time_min'] = trips['Time_min'].dt.tz_convert('America/Los_Angeles')
 
     #aggregate by date, Route. Get the average runtime, bot percentile, and top percentile. Use groupby, agg, and lambda functions
-    runtimes_df = runtimes_df.groupby(['Date', 'Route']).agg({'runtime': ['mean', lambda x: np.percentile(x, 5), lambda x: np.percentile(x, 95)]}).reset_index()
+    runtimes_df = trips.groupby(['Date', 'Route']).agg({'runtime': ['median', lambda x: np.percentile(x, 5), lambda x: np.percentile(x, 95)]}).reset_index()
 
     #columns
     runtimes_df.columns = ['Date', 'Route', 'mean_runtime', 'bot_percentile', 'top_percentile']
     
     #create datetime object from date
     runtimes_df['Date'] = pd.to_datetime(runtimes_df['Date'])
+
     #sort low to high
     runtimes_df = runtimes_df.sort_values(by='Date')
 
@@ -253,26 +334,42 @@ def runtimes_by_date():
     for route in runtimes_df.Route.unique():
         df = runtimes_df[runtimes_df.Route == route]
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df.Date, y=df['top_percentile'], mode='lines', line=dict(width=0), showlegend=False, hovertemplate="<b>95th Percentile: %{y} minutes</b><br>Date: %{x}"))
-        fig.add_trace(go.Scatter(x=df.Date, y=df.mean_runtime, mode='lines', name="Route " + str(df.Route.iloc[0]), fill='tonexty', hovertemplate="<b>Mean Runtime: %{y} minutes</b><br>Date: %{x}"))
-        fig.add_trace(go.Scatter(x=df.Date, y=df['bot_percentile'], mode='lines', line=dict(width=0), showlegend=False, fill='tonexty', hovertemplate="<b>5th Percentile: %{y} minutes</b><br>Date: %{x}"))
 
+        colour = px.colors.qualitative.Plotly[0]
+
+        #scatter plot of the data
+        fig.add_trace(go.Scatter(
+                x=trips.Time_min, 
+                y=trips.runtime, 
+                mode='markers', 
+                name=str(route), 
+                marker=dict(color=colour, opacity=0.25), 
+                customdata=trips[['Route', 'label', 'Header']],
+                hovertemplate="<b>Runtime: %{y} minutes</b><br>Direction: %{customdata[2]}<br>Departure: %{customdata[1]}<br>Route: %{customdata[0]}<extra></extra>",
+                showlegend=False
+            ))
+
+        fig.add_trace(go.Scatter(x=df.Date,
+                     y=df.mean_runtime,
+                     mode='lines',
+                     name="Route " + str(df.Route.iloc[0]),
+                     marker=dict(color='darkblue'),
+                     hovertemplate="<b>Mean Runtime: %{y} minutes</b><br>Date: %{x}"))
+     
         fig.update_layout(title='Route {} Runtime by Date'.format(df.Route.iloc[0]),
                         xaxis_title='Date',
                         yaxis_title='Mean Runtime (minutes)')
         
         #centre title
         fig.update_layout(title_x=0.5)
-        #add a subtitle
-        fig.add_annotation(text="5th and 95th Percentiles Shown", xref="paper", yref="paper", x=0.5, y=0.05, showarrow=False)
 
         fig.write_html("docs/plots/runtime_by_date/route " + str(route) + ".html")
 
     return
 
 #run all functions
-system_map()
-corridor_map()
-all_routes_bar_chart()
+#system_map()
+#corridor_map()
+#all_routes_bar_chart()
 runtimes_by_time()
-runtimes_by_date()
+#runtimes_by_date()
