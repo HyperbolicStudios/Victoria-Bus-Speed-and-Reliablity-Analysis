@@ -331,6 +331,8 @@ def runtimes_by_date():
     runtimes_df['bot_percentile'] = runtimes_df['bot_percentile'].round(2)
     runtimes_df['top_percentile'] = runtimes_df['top_percentile'].round(2)
 
+    trips['runtime'] = trips['runtime'].round(2)
+
     for route in runtimes_df.Route.unique():
         df = runtimes_df[runtimes_df.Route == route]
         fig = go.Figure()
@@ -368,8 +370,8 @@ def runtimes_by_date():
     return
 
 #run all functions
-#system_map()
-#corridor_map()
-#all_routes_bar_chart()
+system_map()
+corridor_map()
+all_routes_bar_chart()
 runtimes_by_time()
-#runtimes_by_date()
+runtimes_by_date()
