@@ -38,26 +38,31 @@
     <nav>
         <h1>Bus Speed/Reliability Metrics</h2>
         <h2><a id="l1" class="active" href="#p1">System Map</a></h2>
-        <h2><a id="l2" href="#p2">Corridor Map</a></h2>
-        <h2><a id="l3" href="#p3">Speed by Route</a></h2>
-        <h2><a id="l4" href="#p4">Speed by time of day</a></h2>
-        <h2><a id="l5" href="#p5">Speed over time</a></h2>
+        <h2><a id="l2" href="#p2">Dot Map</a></h2>
+        <h2><a id="l3" href="#p3">Corridor Map</a></h2>
+        <h2><a id="l4" href="#p4">Speed by Route</a></h2>
+        <h2><a id="l5" href="#p5">Speed by time of day</a></h2>
+        <h2><a id="l6" href="#p6">Speed by day</a></h2>
     </nav>    
     <div class="main">
 
         <div id="p1" class="page">
             <iframe src="plots/system_map.html" width="95%" height="100%"></iframe>
         </div>
-       
+
         <div id="p2" class="page">
+            <iframe src="plots/dot_map.html" width="95%" height="100%"></iframe>
+        </div>
+       
+        <div id="p3" class="page">
             <iframe src="plots/corridor_map.html" width="95%" height="100%"></iframe>
         </div>
 
-        <div id="p3" class="page">
+        <div id="p4" class="page">
             <iframe src="plots/all_routes_bar_chart.html" width="95%" height="100%"></iframe>
         </div>
 
-        <div id="p4" class="page-options">
+        <div id="p5" class="page-options">
             <div><label>Select a route: </label>
                 <select onchange="changeIframeUrl(this.value)" id="speeds_by_time">
                     <option value="">Choose a Route</option>
@@ -124,7 +129,7 @@
             <iframe id="speed-time-chart" src="plots/runtime_by_time/route 4.html" width="95%" height="100%"></iframe>
         </div>
 
-        <div id="p5" class="page-options">
+        <div id="p6" class="page-options">
             <div>
                 <label>Select a route: </label>
                 <select onchange="changeIframeUrl_date_chart(this.value)" id="speeds_by_date">

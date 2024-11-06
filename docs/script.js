@@ -34,6 +34,7 @@ $(document).ready(function () {
         pos3 = $('#p3').offset().top;
         pos4 = $('#p4').offset().top;
         pos5 = $('#p5').offset().top;
+        pos6 = $('#p6').offset().top;
 
     //basically, add or remove the class "active" to the links based on the scroll position
     var scrollPos = $(document).scrollTop() + 300;
@@ -43,12 +44,14 @@ $(document).ready(function () {
         $('#l3').removeClass('active');
         $('#l4').removeClass('active');
         $('#l5').removeClass('active');
+        $('#l6').removeClass('active');
     } else if (scrollPos >= pos2 && scrollPos < pos3) {
         $('#l1').removeClass('active');
         $('#l2').addClass('active');
         $('#l3').removeClass('active');
         $('#l4').removeClass('active');
         $('#l5').removeClass('active');
+        $('#l6').removeClass('active');
     }
     else if (scrollPos >= pos3 && scrollPos < pos4) {
         $('#l1').removeClass('active');
@@ -56,6 +59,7 @@ $(document).ready(function () {
         $('#l3').addClass('active');
         $('#l4').removeClass('active');
         $('#l5').removeClass('active');
+        $('#l6').removeClass('active');
     }
     else if (scrollPos >= pos4 && scrollPos < pos5) {
         $('#l1').removeClass('active');
@@ -63,14 +67,23 @@ $(document).ready(function () {
         $('#l3').removeClass('active');
         $('#l4').addClass('active');
         $('#l5').removeClass('active');
+        $('#l6').removeClass('active');
     }
-    else if (scrollPos >= pos5) {
+    else if (scrollPos >= pos5 && scrollPos < pos6) {
         $('#l1').removeClass('active');
         $('#l2').removeClass('active');
         $('#l3').removeClass('active');
         $('#l4').removeClass('active');
         $('#l5').addClass('active');
+        $('#l6').removeClass('active');
+    }
+    else if (scrollPos >= pos6) {
+        $('#l1').removeClass('active');
+        $('#l2').removeClass('active');
+        $('#l3').removeClass('active');
+        $('#l4').removeClass('active');
+        $('#l5').removeClass('active');
+        $('#l6').addClass('active');
     }
     });
-}
-);
+});

@@ -105,6 +105,31 @@ def system_map():
 
     return
 
+def dot_map():
+    timeline = retrieve_timeline()
+    #pick 10000 random points
+    timeline = timeline.sample(n=50000)
+
+    #round speed to 1 decimal place
+    timeline.Speed = timeline.Speed.round(1)
+    #plot a scatter plot with plotly
+    fig = px.scatter_mapbox(timeline, lat=timeline.y, lon=timeline.x, color="Speed",
+                            mapbox_style="carto-positron",
+                            opacity=0.7,
+                            color_continuous_scale=["red", "yellow", "green"],
+                            range_color=(0, 50),
+                            zoom=11,
+                            center={'lat': 48.4566, 'lon': -123.3763},
+                            hover_data=['Speed']
+                            )
+    fig.update_traces(hovertemplate="<b>Average Speed: %{customdata[0]} km/h<br>")
+    
+    fig.update_layout(title_text="System-Wide 50,000 point Sample", title_x=0.5)
+
+    fig.write_html("docs/plots/dot_map.html")
+
+    return
+
 def corridor_map():
     corridors = gpd.read_file("corridors.geojson")
 
@@ -370,8 +395,12 @@ def runtimes_by_date():
     return
 
 #run all functions
-system_map()
+"""system_map()
 corridor_map()
 all_routes_bar_chart()
 runtimes_by_time()
+dot_map()
 runtimes_by_date()
+"""
+
+dot_map()
