@@ -1,3 +1,19 @@
+function showSystemMap(mapType) {
+    var newURL = "plots/" + mapType + ".html";
+    var iframe = document.getElementById('system_map');
+    iframe.src = newURL;
+
+    // Remove 'active' class from all buttons
+    var buttons = document.querySelectorAll('button');
+    buttons.forEach(function(button) {
+        button.classList.remove('active');
+    });
+
+    // Add 'active' class to the clicked button
+    var activeButton = document.querySelector('button[onclick="showSystemMap(\'' + mapType + '\')"]');
+    activeButton.classList.add('active');
+}
+
 function changeIframeUrl(option) {
     console.log("option: " + option);
 

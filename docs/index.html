@@ -43,12 +43,22 @@
         <h2><a id="l4" href="#p4">Speed by Route</a></h2>
         <h2><a id="l5" href="#p5">Speed by time of day</a></h2>
         <h2><a id="l6" href="#p6">Speed by day</a></h2>
+        <p>Built by <a href="https://markedwardson.com">Mark Edwardson</a></p>
+        <p><a href="https://github.com/HyperbolicStudios/Victoria-Bus-Speed-and-Reliablity-Analysis">Project Github </a></p>
     </nav>    
     <div class="main">
 
-        <div id="p1" class="page">
-            <iframe src="plots/system_map.html" width="95%" height="100%"></iframe>
+        <div id="p1" class="page-options">
+            <div>
+            <button class="active" onclick="showSystemMap('system_speed_map')">System Speed Map</button>
+            <button onclick="showSystemMap('system_speed_peak_map')">System Speed Peak Map</button>
+            <button onclick="showSystemMap('system_peak_variability_map')">System Peak Variability Map</button>
+            </div>
+           
+            <iframe id="system_map" src="plots/system_speed_map.html" width="95%" height="100%"></iframe>
+          
         </div>
+            
 
         <div id="p2" class="page">
             <iframe src="plots/dot_map.html" width="95%" height="100%"></iframe>
