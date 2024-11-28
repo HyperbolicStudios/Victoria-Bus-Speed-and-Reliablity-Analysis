@@ -1,3 +1,4 @@
+import os
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -7,9 +8,18 @@ import plotly.express as px
 import plotly.graph_objects as go
 import statsmodels.api as sm
 
+from server_management import get_headers_df
+
 #Retrieve the entire timeline (as points). Used for the system and corridor maps
 def retrieve_timeline():
-    timeline = pd.read_csv("timeline.csv")
+    timeline = pd.DataFrame()
+    #for csv file in historical speed data/data:
+    for filename in os.listdir("historical speed data/data"):
+        if filename.endswith(".csv"):
+            #read csv file
+            file = pd.read_csv("historical speed data/data/" + filename, dtype={"Time": np.int64, "Route": str, "Header": np.int64, "Trip ID": np.int64, "Speed": np.float64, "x": np.float64, "y": np.float64, "Occupancy Status": np.int64})
+            #append to timeline
+            timeline = pd.concat([timeline, file], ignore_index=True)
 
     #turn into geopandas dataframe based on x and y
     timeline = gpd.GeoDataFrame(timeline, geometry=gpd.points_from_xy(timeline.x, timeline.y))
@@ -20,8 +30,6 @@ def retrieve_timeline():
     #convert to PST
     timeline['Datetime'] = timeline['Datetime'].dt.tz_convert('America/Los_Angeles')
 
-    #temporary fix for missing speed data
-    timeline['Header'] = "Route " + timeline['Route'].astype(str)
     return(timeline)
 
 #Produce a summary of each trip-in-time (i.e. trip X on day Y), with average speed, runtime, etc.
@@ -57,6 +65,16 @@ def summarize_trip_data():
     #convert to PST
     runtimes_df['label'] = runtimes_df['label'].dt.tz_convert('America/Los_Angeles').dt.strftime('%Y-%m-%d %H:%M:%S')
 
+    #Headers are stored in a separate collection. Merge the headers with the runtimes_df
+    headers = get_headers_df()
+    runtimes_df = runtimes_df.rename(columns={"Header": "Header_ID"})
+
+    runtimes_df['Header_ID'] = runtimes_df['Header_ID']
+    headers['Header_ID'] = headers['Header_ID']
+
+    runtimes_df = runtimes_df.merge(headers, on="Header_ID", how="left")
+    runtimes_df = runtimes_df.drop(columns=["Header_ID", "_id"])
+
     return(runtimes_df)
 
 def system_map():
@@ -76,40 +94,54 @@ def system_map():
   
     timeline = timeline[["Hour", "Speed", "buffer_id", "geometry"]]
 
-    #aggregate by buffer_id. Aggregate Speed to average and geometry to first
-    timeline = timeline.groupby(["buffer_id"]).agg({"Speed": "mean", "geometry": "first"}).reset_index()
+    for map_name, y_var, title in [("system_speed_map", "Speed", "Average All-Day Speed"), ("system_speed_peak_map", "Speed", "Average Speed (8am-11am)"), ("system_peak_variability_map", "Speed Variability", "Speed Variability (8am-11am)")]:
+        if map_name == "system_speed_map":
+            #aggregate by buffer_id. Aggregate Speed to average and geometry to first
+            gdf = timeline.groupby(["buffer_id"]).agg({"Speed": "mean", "geometry": "first"}).reset_index()
+        elif map_name == "system_speed_peak_map":
+            #restrict to between 8am and 11am
+            gdf = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
+            gdf = gdf.groupby(["buffer_id"]).agg({"Speed": "mean", "geometry": "first"}).reset_index()
+        elif map_name == "system_peak_variability_map":
+            #restrict to between 8am and 11am
+            gdf = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
+            gdf = gdf.groupby(["buffer_id"]).agg({"Speed": "std", "geometry": "first"}).reset_index()
+            gdf = gdf.rename(columns={"Speed": "Speed Variability"})
 
-    timeline = gpd.GeoDataFrame(timeline, geometry="geometry", crs="EPSG:26910")
+        gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs="EPSG:26910")
+        gdf = gdf.to_crs("WGS-84")
+        gdf[y_var] = gdf[y_var].round(1)
 
-    timeline = timeline.to_crs("WGS-84")
+        if y_var == "Speed":
+            color_continuous_scale=["red", "yellow", "green"]
+            range_color=(10, 50)
+        else:
+            color_continuous_scale=["green", "yellow", "red"]
+            range_color=(0, 25)
 
-    timeline.Speed = timeline.Speed.round(0)
-
-    fig = px.choropleth_mapbox(timeline, geojson=timeline.geometry, locations=timeline.index, color="Speed",
-                            mapbox_style="carto-positron",
-                            opacity=0.7,
-                            labels={'Speed':'Average Speed (km/hr)'},
-                            color_continuous_scale=["red", "yellow", "green"],
-                            #colour scale from 0 to 50
-                            range_color=(10, 50),
-                            zoom=11,
-                            center={'lat': 48.4566, 'lon': -123.3763},
-                            hover_data=['Speed']
-                            )
+        fig = px.choropleth_mapbox(gdf, geojson=gdf.geometry, locations=gdf.index, color=y_var,
+                    mapbox_style="carto-positron",
+                    opacity=0.7,
+                    labels={y_var: y_var + ' (km/hr)'},
+                    color_continuous_scale=color_continuous_scale,
+                    range_color=range_color,
+                    zoom=11,
+                    center={'lat': 48.4566, 'lon': -123.3763},
+                    hover_data=[y_var]
+                    )
     
-    fig.update_traces(marker_line_width=0, hovertemplate="<b>Average Speed: %{customdata[0]} km/h<br>")
-    #add title, center it
-    fig.update_layout(title_text="Average All-Day Speed (System-Wide)", title_x=0.5)
-   
-    fig.write_html("docs/plots/system_map.html")
+        fig.update_traces(marker_line_width=0, hovertemplate="<b>Average " + y_var + ": %{customdata[0]} km/h<br>")
+        fig.update_layout(title_text=title, title_x=0.5)
+    
+        fig.write_html("docs/plots/" + map_name + ".html")
 
     return
 
 def dot_map():
     timeline = retrieve_timeline()
-    #pick 10000 random points
-    timeline = timeline.sample(n=50000)
-
+    #pick 150000 random points
+    if len(timeline) >= 150000:
+        timeline = timeline.sample(n=150000)
     #round speed to 1 decimal place
     timeline.Speed = timeline.Speed.round(1)
     #plot a scatter plot with plotly
@@ -131,22 +163,28 @@ def dot_map():
     return
 
 def corridor_map():
-    corridors = gpd.read_file("corridors.geojson")
+    corridors = gpd.read_file("corridors.geojson").set_crs("EPSG:4326").to_crs("EPSG:26910")
 
     #add names to each corridor: Mckenzie, Fort St West, Fort St East, Foul Bay, Henderson, Quadra
-    corridors["corridor"] = ["Mckenzie", "Fort St West", "Fort St East", "Foul Bay", "Hillside", "Quadra","Douglas Core","Douglas North"]
+    corridors["corridor"] = ["Mckenzie", "Fort St West", "Fort St East", "Foul Bay", "Hillside", "Quadra","Douglas Core","Douglas North", "Pandora West", "Pandora East", "Shelbourne South", "Shelbourne North", "Johnson", "Oak Bay"]
     corridors['Average Speed'] = 0
     timeline = retrieve_timeline()
     
     selected_routes = {
-        "Mckenzie": [26],
-        "Fort St West": [14, 15, 11],
-        "Fort St East": [14, 15, 11],
-        "Foul Bay": [7, 15],
-        "Hillside": [4],
-        "Quadra": [6],
-        "Douglas Core": [95],
-        "Douglas North": [95]
+        "Mckenzie": ["26"],
+        "Fort St West": ["14", "15", "11"],
+        "Fort St East": ["14", "15", "11"],
+        "Foul Bay": ["7", "15"],
+        "Hillside": ["4"],
+        "Quadra": ["6"],
+        "Douglas Core": ["95"],
+        "Douglas North": ["95"],
+        "Pandora West": ["2", "5", "27", "28"],
+        "Pandora East": ["2", "5", "27", "28"],
+        "Shelbourne South": ["27", "28"],
+        "Shelbourne North": ["27", "28"],
+        "Johnson": ["2", "5", "27", "28"],
+        "Oak Bay": ["2", "5"]
     }
  
     for corridor in corridors.corridor:
@@ -191,30 +229,32 @@ def all_routes_bar_chart():
 
     timeline = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
 
-    timeline = timeline.groupby(["Route"]).agg({"Speed": "mean"}).reset_index()
+    timeline.Route = timeline.Route.astype(str)
 
-    timeline = timeline.sort_values(by="Speed", ascending=True)
-    
-    timeline['Route'] = timeline.Route.astype(str)
+    pivot = pd.pivot_table(timeline, values='Speed', index='Route', aggfunc='mean')
 
+    #order by speed, highest to lowest
+    pivot = pivot.sort_values(by='Speed', ascending=True).reset_index()
 
     #set timeline.Frequency to one of Local, FTN, RTN
-    timeline['Frequency'] = "Local"
-    for route in timeline.Route:
+    pivot['Frequency'] = "Local"
+    for route in pivot.Route:
         if route in ['70', '95', '15']:
-            timeline.loc[timeline.Route == route, "Frequency"] = "RTN"
+            pivot.loc[pivot.Route == route, "Frequency"] = "RTN"
         elif route in ['4', '6', '26', '14', '27', '28']:
-            timeline.loc[timeline.Route == route, "Frequency"] = "FTN"
+            pivot.loc[pivot.Route == route, "Frequency"] = "FTN"
     
-    color_discrete_map = {"Local": "grey", "FTN": "blue", "RTN": "orange"}
+    color_discrete_map = {"Local": "#A8A8A8", "FTN": "#4A90E2", "RTN": "#F5A623"}
 
-    fig = px.bar(timeline, y="Speed", x="Route", orientation="v", color="Frequency", color_discrete_map=color_discrete_map, labels={"Speed": "Average Speed (km/hr)", "route": "Route"},
+    fig = px.bar(pivot, y="Speed", x="Route", orientation="v", color="Frequency", color_discrete_map=color_discrete_map, labels={"Speed": "Average Speed (km/hr)", "route": "Route"},
     #order bars by speed, highest to lowest
-    category_orders={"Route": timeline.Route})
+    category_orders={"Route": pivot.Route})
 
-    fig.update_layout(title_text="Average Speed by Route", title_x=0.5)
+    fig.update_layout(title_text="Average Speed by Route (8am-11am)", title_x=0.5)
     fig.write_html("docs/plots/all_routes_bar_chart.html")
-           
+
+    return
+
 def runtimes_by_time():
     trips = summarize_trip_data()
     #only pick trips that were on a weekday - use time_min (currently in epoch time) to get the day of the week. Will need to turn epoch to datetime
@@ -236,19 +276,19 @@ def runtimes_by_time():
 
     #round runtime to 1 decimal place
     trips['runtime'] = trips['runtime'].round(1)
-   
+
     for route in trips.Route.unique():
         fig = go.Figure()
-
-        for i in range(0, len(trips[trips.Route == route].Header.unique())):
+        route_trips = trips[trips.Route == route]
+        for i in range(0, len(route_trips.Header.unique())):
             header = trips[trips.Route == route].Header.unique()[i]
             colour = px.colors.qualitative.Plotly[i]
 
-            df = trips[(trips.Route == route) & (trips.Header == header)]
+            df = route_trips[route_trips.Header == header]
 
             #calculate 5th and 95th percentile using a central moving average
-            y_5th_perc = df.runtime.rolling(window=15, center=True).apply(lambda x: np.percentile(x, 5), raw=True)
-            y_95th_perc = df.runtime.rolling(window=15, center=True).apply(lambda x: np.percentile(x, 95), raw=True)
+            y_5th_perc = df.runtime.rolling(window=10, center=True).apply(lambda x: np.percentile(x, 5), raw=True)
+            y_95th_perc = df.runtime.rolling(window=10, center=True).apply(lambda x: np.percentile(x, 95), raw=True)
 
             x = df['Time-only'].astype('int64') // 10**9
             
@@ -395,12 +435,13 @@ def runtimes_by_date():
     return
 
 #run all functions
-"""system_map()
-corridor_map()
-all_routes_bar_chart()
-runtimes_by_time()
-dot_map()
-runtimes_by_date()
-"""
+def run_all():
+    system_map()
+    corridor_map()
+    all_routes_bar_chart()
+    runtimes_by_time()
+    dot_map()
+    runtimes_by_date()
+    return
 
-dot_map()
+run_all()
