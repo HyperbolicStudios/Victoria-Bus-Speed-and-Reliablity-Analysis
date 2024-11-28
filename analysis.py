@@ -287,14 +287,14 @@ def runtimes_by_time():
             df = route_trips[route_trips.Header == header]
 
             #calculate 5th and 95th percentile using a central moving average
-            y_5th_perc = df.runtime.rolling(window=10, center=True).apply(lambda x: np.percentile(x, 5), raw=True)
-            y_95th_perc = df.runtime.rolling(window=10, center=True).apply(lambda x: np.percentile(x, 95), raw=True)
+            df['y_5th_perc'] = df.runtime.rolling(window=10, min_periods=1, center=True).apply(lambda x: np.percentile(x, 5), raw=True)
+            df['y_95th_perc'] = df.runtime.rolling(window=10, min_periods=1, center=True).apply(lambda x: np.percentile(x, 95), raw=True)
 
             x = df['Time-only'].astype('int64') // 10**9
             
             lowess = sm.nonparametric.lowess(df.runtime, x, frac=.3)
-            lowess_5th_perc = sm.nonparametric.lowess(y_5th_perc, x, frac=.3)
-            lowess_95th_perc = sm.nonparametric.lowess(y_95th_perc, x, frac=.3)
+            lowess_5th_perc = sm.nonparametric.lowess(df.y_5th_perc, x, frac=.3)
+            lowess_95th_perc = sm.nonparametric.lowess(df.y_95th_perc, x, frac=.3)
 
             y = lowess[:, 1]
             y_5th_perc = lowess_5th_perc[:, 1]
@@ -370,6 +370,8 @@ def runtimes_by_time():
 
     return  
 
+runtimes_by_time()
+
 def runtimes_by_date():
 
     trips = summarize_trip_data()
@@ -444,4 +446,4 @@ def run_all():
     runtimes_by_date()
     return
 
-run_all()
+#run_all()
