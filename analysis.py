@@ -260,7 +260,7 @@ def runtimes_by_time():
     #only pick trips that were on a weekday - use time_min (currently in epoch time) to get the day of the week. Will need to turn epoch to datetime
     trips = trips[trips.Time_min.apply(lambda x: pd.to_datetime(x, unit='s').weekday() < 5)]
 
-    #convert time_min to datetime. Data is epoch time, datetime needs to be in PST
+    #convert time_min to datetime. Data is epoch time, datetime needs to be i  -n PST
     trips['Time-only'] = pd.to_datetime(trips['Time_min'], unit='s', utc=True)
     #convert to PST
     trips['Time-only'] = trips['Time-only'].dt.tz_convert('America/Los_Angeles').dt.strftime('%H:%M:%S')
@@ -370,8 +370,6 @@ def runtimes_by_time():
 
     return  
 
-runtimes_by_time()
-
 def runtimes_by_date():
 
     trips = summarize_trip_data()
@@ -446,4 +444,4 @@ def run_all():
     runtimes_by_date()
     return
 
-#run_all()
+run_all()

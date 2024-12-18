@@ -116,3 +116,5 @@ def fix():
                 df.to_csv(f"historical speed data/data/compressed/{file}", index=False)
             
 #download_from_mongo()
+
+#download_and_clear()
