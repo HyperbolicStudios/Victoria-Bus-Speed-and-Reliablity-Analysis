@@ -117,4 +117,4 @@ def fix():
             
 #download_from_mongo()
 
-#download_and_clear()
+download_and_clear()
