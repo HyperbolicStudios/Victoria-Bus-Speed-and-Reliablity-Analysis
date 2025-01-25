@@ -114,7 +114,5 @@ def fix():
                 df["Trip ID"] = df["Trip ID"].str.split(":", 1).str[0]
                 df['Trip ID'] = df['Trip ID'].astype(int)
                 df.to_csv(f"historical speed data/data/compressed/{file}", index=False)
-            
-#download_from_mongo()
 
-download_and_clear()
+#download_and_clear()

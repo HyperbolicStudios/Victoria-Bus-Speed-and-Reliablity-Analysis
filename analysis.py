@@ -94,7 +94,7 @@ def system_map():
   
     timeline = timeline[["Hour", "Speed", "buffer_id", "geometry"]]
 
-    for map_name, y_var, title in [("system_speed_map", "Speed", "Average All-Day Speed"), ("system_speed_peak_map", "Speed", "Average Speed (8am-11am)"), ("system_peak_variability_map", "Speed Variability", "Speed Variability (8am-11am)")]:
+    for map_name, y_var, title in [("system_speed_map", "Speed", "Average All-Day Speed"), ("system_speed_peak_map", "Speed", "Average Speed (8am-11am)"), ("system_peak_variability_map", "Speed Variability", "Speed Variability (8am-11am)"), ("peak_off_peak_map", "Delta", "Peak vs Off-Peak Speed")]:
         if map_name == "system_speed_map":
             #aggregate by buffer_id. Aggregate Speed to average and geometry to first
             gdf = timeline.groupby(["buffer_id"]).agg({"Speed": "mean", "geometry": "first"}).reset_index()
@@ -102,11 +102,33 @@ def system_map():
             #restrict to between 8am and 11am
             gdf = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
             gdf = gdf.groupby(["buffer_id"]).agg({"Speed": "mean", "geometry": "first"}).reset_index()
+            """
         elif map_name == "system_peak_variability_map":
             #restrict to between 8am and 11am
             gdf = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
             gdf = gdf.groupby(["buffer_id"]).agg({"Speed": "std", "geometry": "first"}).reset_index()
-            gdf = gdf.rename(columns={"Speed": "Speed Variability"})
+            gdf = gdf.rename(columns={"Speed": "Speed Variability"})"""
+        elif map_name == "peak_off_peak_map":
+            #pivot table. rows - buffer_id/geometry, columns - hour, values - speed
+            gdf = timeline.pivot_table(index=["buffer_id"], columns="Hour", values="Speed", aggfunc="mean").reset_index()
+
+            gdf = gdf.merge(timeline[["buffer_id", "geometry"]].drop_duplicates(subset=["buffer_id"]), on="buffer_id", how="left")
+            #calculate a three-hour-window moving average to identify the peak and off-peak speeds
+            for i in range(1, 22): #centres of the different windows
+                gdf["{}-{}-{}".format(i-1, i, i+1)] = gdf[[i-1, i, i+1]].mean(axis=1)
+            #for each row, identify the highest and lowest values of these windows
+            cols_to_analyze = gdf.loc[:, "0-1-2":"20-21-22"]
+            gdf['Peak'] = cols_to_analyze.min(axis=1)
+            gdf['Peak Hour'] = cols_to_analyze.idxmin(axis=1)
+            gdf['Off-Peak'] = cols_to_analyze.max(axis=1)
+            gdf['Off-Peak Hour'] = cols_to_analyze.idxmax(axis=1)
+
+            gdf['Delta'] = gdf['Off-Peak'] - gdf['Peak']
+
+            gdf = gdf[["buffer_id", "geometry", "Peak", "Peak Hour", "Off-Peak", "Off-Peak Hour", "Delta"]]
+        
+        else:
+            continue
 
         gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs="EPSG:26910")
         gdf = gdf.to_crs("WGS-84")
@@ -129,9 +151,17 @@ def system_map():
                     center={'lat': 48.4566, 'lon': -123.3763},
                     hover_data=[y_var]
                     )
+        #if map_name == peak_off_peak_map, add a description at the bottom
+        if map_name == "peak_off_peak_map":
+            fig.update_traces(marker_line_width=0, hovertemplate="<b>Average " + y_var + ": %{customdata[0]} km/h<br>")
+            fig.update_layout(title_text=title, title_x=0.5)
+            
+            if map_name == "peak_off_peak_map":
+                fig.add_annotation(text="The map represents the delta between a segment's best and worst performing hour. Time windows vary between segments.", xref="paper", yref="paper", x=0.5, y=-0.05, showarrow=False)
     
         fig.update_traces(marker_line_width=0, hovertemplate="<b>Average " + y_var + ": %{customdata[0]} km/h<br>")
         fig.update_layout(title_text=title, title_x=0.5)
+        fig.update_layout(margin={"r":0,"t":0,"l":0,"b":50})
     
         fig.write_html("docs/plots/" + map_name + ".html")
 
@@ -186,6 +216,9 @@ def corridor_map():
         "Johnson": ["2", "5", "27", "28"],
         "Oak Bay": ["2", "5"]
     }
+
+    #for map_name, y_var, title in [("system_speed_map", "Speed", "Average All-Day Speed"), ("system_speed_peak_map", "Speed", "Average Speed (8am-11am)"), ("system_peak_variability_map", "Speed Variability", "Speed Variability (8am-11am)")]:
+    
  
     for corridor in corridors.corridor:
         filtered_timeline = timeline[timeline.Route.isin(selected_routes[corridor])].reset_index()
@@ -257,6 +290,8 @@ def all_routes_bar_chart():
 
 def runtimes_by_time():
     trips = summarize_trip_data()
+    #only use data from the past 30 days
+    trips = trips[trips.Date >= pd.to_datetime('today') - pd.Timedelta(days=30)]
     #only pick trips that were on a weekday - use time_min (currently in epoch time) to get the day of the week. Will need to turn epoch to datetime
     trips = trips[trips.Time_min.apply(lambda x: pd.to_datetime(x, unit='s').weekday() < 5)]
 
