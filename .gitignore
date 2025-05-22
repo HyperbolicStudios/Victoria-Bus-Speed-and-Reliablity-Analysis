@@ -4,3 +4,4 @@
 /.vscode
 /Historical Feeds
 roads/raw_download.geojson
+/static
