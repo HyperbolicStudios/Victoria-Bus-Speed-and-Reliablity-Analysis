@@ -5,3 +5,4 @@ timeline.csv
 /__pycache__
 /Historical Feeds
 /static
+roads/raw_download.geojson
