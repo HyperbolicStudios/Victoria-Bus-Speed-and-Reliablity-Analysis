@@ -24,10 +24,13 @@ from google.transit import gtfs_realtime_pb2
 
 import matplotlib.pyplot as plt
 
+import geopandas as gpd
+
 dns.resolver.default_resolver=dns.resolver.Resolver(configure=False)
 dns.resolver.default_resolver.nameservers=['8.8.8.8']
 
 client = pymongo.MongoClient(os.environ['MONGO_URL'])
+
 mydb = client.Cluster0
 mycol = mydb["transit_speed_data"]
 header_col = mydb["headers"]
@@ -43,6 +46,7 @@ else:
     newDirectory = directory[:(directory.rfind("\\")+1)]
 os.chdir(newDirectory)
 
+
 def get_headers_df():
     #get all headers from mongodb and create a pandas dataframe. Return the dataframe. Columns are HeaderID and Header
     myquery = {}
@@ -55,8 +59,6 @@ def get_headers_df():
         df = pd.DataFrame(columns = ["Header_ID","Header"])
         df = pd.concat([df, pd.DataFrame([{"Header_ID": 0, "Header": "Placeholder"}])], ignore_index=True)
     return df
-
-headers_df = get_headers_df()
 
 def download_from_mongo():
     print("Downloading data from MongoDB")
@@ -114,5 +116,9 @@ def fix():
                 df["Trip ID"] = df["Trip ID"].str.split(":", 1).str[0]
                 df['Trip ID'] = df['Trip ID'].astype(int)
                 df.to_csv(f"historical speed data/data/compressed/{file}", index=False)
+    return
+
 
 #download_and_clear()
+
+#download_from_mongo()

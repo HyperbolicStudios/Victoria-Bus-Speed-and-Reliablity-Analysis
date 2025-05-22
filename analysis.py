@@ -7,14 +7,20 @@ from create_shapes import generate_lines
 import plotly.express as px
 import plotly.graph_objects as go
 import statsmodels.api as sm
+import keplergl
+import json
 
 from server_management import get_headers_df
 
 #Retrieve the entire timeline (as points). Used for the system and corridor maps
-def retrieve_timeline():
+def retrieve_timeline(file_limit = 1):
     timeline = pd.DataFrame()
     #for csv file in historical speed data/data:
-    for filename in os.listdir("historical speed data/data"):
+    files = os.listdir("historical speed data/data")
+    file_number = 0
+    while(file_number < file_limit):
+        filename = files[file_number]
+        file_number += 1
         if filename.endswith(".csv"):
             #read csv file
             file = pd.read_csv("historical speed data/data/" + filename, dtype={"Time": np.int64, "Route": str, "Header": np.int64, "Trip ID": np.int64, "Speed": np.float64, "x": np.float64, "y": np.float64, "Occupancy Status": np.int64})
@@ -82,118 +88,96 @@ def system_map():
     timeline = retrieve_timeline()
  
     #create a buffer around each line in lines, and create a new geodataframe with the buffers
-    buffers = gpd.GeoDataFrame(geometry=route_segments.buffer(20, cap_style=2), crs="EPSG:26910")
-
+    route_segments['line_geom'] = route_segments['geometry']
+    route_segments['geometry'] = route_segments.buffer(20, cap_style=2)
+    route_segments['buffer_id'] = route_segments.index
     timeline['Hour'] = timeline.Datetime.dt.hour
-    
-    buffers = buffers.reset_index()
-    buffers['buffer_id'] = buffers.index
 
     #spatial merge. Find all the points that are within buffers, and retain buffer geometry.
-    timeline = gpd.sjoin(buffers, timeline, how="left", predicate="intersects")
-  
+    timeline = gpd.sjoin(route_segments, timeline, how="left", predicate="intersects")
+    
+    timeline['geometry'] = timeline['line_geom']
     timeline = timeline[["Hour", "Speed", "buffer_id", "geometry"]]
 
-    for map_name, y_var, title in [("system_speed_map", "Speed", "Average All-Day Speed"), ("system_speed_peak_map", "Speed", "Average Speed (8am-11am)"), ("system_peak_variability_map", "Speed Variability", "Speed Variability (8am-11am)"), ("peak_off_peak_map", "Delta", "Peak vs Off-Peak Speed")]:
-        if map_name == "system_speed_map":
-            #aggregate by buffer_id. Aggregate Speed to average and geometry to first
-            gdf = timeline.groupby(["buffer_id"]).agg({"Speed": "mean", "geometry": "first"}).reset_index()
-        elif map_name == "system_speed_peak_map":
-            #restrict to between 8am and 11am
-            gdf = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
-            gdf = gdf.groupby(["buffer_id"]).agg({"Speed": "mean", "geometry": "first"}).reset_index()
-            """
-        elif map_name == "system_peak_variability_map":
-            #restrict to between 8am and 11am
-            gdf = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
-            gdf = gdf.groupby(["buffer_id"]).agg({"Speed": "std", "geometry": "first"}).reset_index()
-            gdf = gdf.rename(columns={"Speed": "Speed Variability"})"""
-        elif map_name == "peak_off_peak_map":
-            #pivot table. rows - buffer_id/geometry, columns - hour, values - speed
-            gdf = timeline.pivot_table(index=["buffer_id"], columns="Hour", values="Speed", aggfunc="mean").reset_index()
-
-            gdf = gdf.merge(timeline[["buffer_id", "geometry"]].drop_duplicates(subset=["buffer_id"]), on="buffer_id", how="left")
-            #calculate a three-hour-window moving average to identify the peak and off-peak speeds
-            for i in range(1, 22): #centres of the different windows
-                gdf["{}-{}-{}".format(i-1, i, i+1)] = gdf[[i-1, i, i+1]].mean(axis=1)
-            #for each row, identify the highest and lowest values of these windows
-            cols_to_analyze = gdf.loc[:, "0-1-2":"20-21-22"]
-            gdf['Peak'] = cols_to_analyze.min(axis=1)
-            gdf['Peak Hour'] = cols_to_analyze.idxmin(axis=1)
-            gdf['Off-Peak'] = cols_to_analyze.max(axis=1)
-            gdf['Off-Peak Hour'] = cols_to_analyze.idxmax(axis=1)
-
-            gdf['Delta'] = gdf['Off-Peak'] - gdf['Peak']
-
-            gdf = gdf[["buffer_id", "geometry", "Peak", "Peak Hour", "Off-Peak", "Off-Peak Hour", "Delta"]]
+    #aggregate data and create maps with kepler.gl
+    
+    #system speed map
+    gdf = timeline.groupby(["buffer_id"]).agg({"Speed": "mean", "geometry": "first"}).reset_index()
+    gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs="EPSG:26910")
+    gdf = gdf.to_crs("WGS-84")
+    gdf['Speed Data'] = gdf['Speed'].round(1)
+    gdf['colour'] = np.where(gdf['Speed Data'] > 50, 50, gdf['Speed Data'])
+    gdf['Speed'] = gdf['Speed Data'].astype(str) + " km/h"
+    
+    kepler_config = json.load(open("kepler_configs/speed_map.json"))
+    map_1 = keplergl.KeplerGl(height=500, data={"Speed": gdf}, config=kepler_config)
+    map_1.save_to_html(file_name="docs/plots/system_speed_map.html", config=kepler_config, read_only=True)
         
-        else:
-            continue
-
-        gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs="EPSG:26910")
-        gdf = gdf.to_crs("WGS-84")
-        gdf[y_var] = gdf[y_var].round(1)
-
-        if y_var == "Speed":
-            color_continuous_scale=["red", "yellow", "green"]
-            range_color=(10, 50)
-        else:
-            color_continuous_scale=["green", "yellow", "red"]
-            range_color=(0, 25)
-
-        fig = px.choropleth_mapbox(gdf, geojson=gdf.geometry, locations=gdf.index, color=y_var,
-                    mapbox_style="carto-positron",
-                    opacity=0.7,
-                    labels={y_var: y_var + ' (km/hr)'},
-                    color_continuous_scale=color_continuous_scale,
-                    range_color=range_color,
-                    zoom=11,
-                    center={'lat': 48.4566, 'lon': -123.3763},
-                    hover_data=[y_var]
-                    )
-        #if map_name == peak_off_peak_map, add a description at the bottom
-        if map_name == "peak_off_peak_map":
-            fig.update_traces(marker_line_width=0, hovertemplate="<b>Average " + y_var + ": %{customdata[0]} km/h<br>")
-            fig.update_layout(title_text=title, title_x=0.5)
-            
-            if map_name == "peak_off_peak_map":
-                fig.add_annotation(text="The map represents the delta between a segment's best and worst performing hour. Time windows vary between segments.", xref="paper", yref="paper", x=0.5, y=-0.05, showarrow=False)
+    #system peak sped map
+    #restrict to between 8am and 11am
+    gdf = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
+    gdf = gdf.groupby(["buffer_id"]).agg({"Speed": "mean", "geometry": "first"}).reset_index()
+    gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs="EPSG:26910")
+    gdf = gdf.to_crs("WGS-84")
+    gdf['Speed Data'] = gdf['Speed'].round(1)
+    gdf['colour'] = np.where(gdf['Speed Data'] > 50, 50, gdf['Speed Data'])
+    gdf['Speed'] = gdf['Speed Data'].astype(str) + " km/h"
     
-        fig.update_traces(marker_line_width=0, hovertemplate="<b>Average " + y_var + ": %{customdata[0]} km/h<br>")
-        fig.update_layout(title_text=title, title_x=0.5)
-        fig.update_layout(margin={"r":0,"t":0,"l":0,"b":50})
-    
-        fig.write_html("docs/plots/" + map_name + ".html")
+    kepler_config = json.load(open("kepler_configs/speed_map.json"))
+    map_1 = keplergl.KeplerGl(height=500, data={"Speed": gdf}, config=kepler_config)
+    map_1.save_to_html(file_name="docs/plots/system_speed_peak_map.html", config=kepler_config, read_only=True)
 
+    #system peak vs off-peak speed map
+
+    gdf = timeline.pivot_table(index=["buffer_id"], columns="Hour", values="Speed", aggfunc="mean").reset_index()
+    gdf = gdf.merge(timeline[["buffer_id", "geometry"]].drop_duplicates(subset=["buffer_id"]), on="buffer_id", how="left")
+    #calculate a three-hour-window moving average to identify the peak and off-peak speeds
+    for i in range(1, 22): #centres of the different windows
+        gdf["{}-{}-{}".format(i-1, i, i+1)] = gdf[[i-1, i, i+1]].mean(axis=1)
+    #for each row, identify the highest and lowest values of these windows
+    cols_to_analyze = gdf.loc[:, "0-1-2":"20-21-22"]
+    gdf['Peak'] = cols_to_analyze.min(axis=1).round(1)
+    gdf['Peak Hour'] = cols_to_analyze.idxmin(axis=1)
+    gdf['Off-Peak'] = cols_to_analyze.max(axis=1).round(1)
+    gdf['Off-Peak Hour'] = cols_to_analyze.idxmax(axis=1)
+
+    gdf['Speed Delta'] = gdf['Off-Peak'] - gdf['Peak']
+
+    gdf = gdf[["buffer_id", "geometry", "Peak", "Peak Hour", "Off-Peak", "Off-Peak Hour", "Speed Delta"]]
+    gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs="EPSG:26910")
+    gdf = gdf.to_crs("WGS-84")
+    gdf['Speed Data'] = gdf['Speed Delta'].round(1)
+    gdf['colour'] = np.where(gdf['Speed Data'] > 50, 50, gdf['Speed Data'])
+    gdf['Speed Delta'] = gdf['Speed Data'].astype(str) + " km/h"
+    
+    kepler_config = json.load(open("kepler_configs/delta_map.json"))
+    map_1 = keplergl.KeplerGl(height=500, data={"Speed Delta": gdf}, config=kepler_config)
+    map_1.save_to_html(file_name="docs/plots/system_delta_map.html", config=kepler_config, read_only=True)
+        
     return
 
 def dot_map():
-    timeline = retrieve_timeline()
-    #pick 150000 random points
-    if len(timeline) >= 150000:
-        timeline = timeline.sample(n=150000)
-    #round speed to 1 decimal place
-    timeline.Speed = timeline.Speed.round(1)
-    #plot a scatter plot with plotly
-    fig = px.scatter_mapbox(timeline, lat=timeline.y, lon=timeline.x, color="Speed",
-                            mapbox_style="carto-positron",
-                            opacity=0.7,
-                            color_continuous_scale=["red", "yellow", "green"],
-                            range_color=(0, 50),
-                            zoom=11,
-                            center={'lat': 48.4566, 'lon': -123.3763},
-                            hover_data=['Speed']
-                            )
-    fig.update_traces(hovertemplate="<b>Average Speed: %{customdata[0]} km/h<br>")
-    
-    fig.update_layout(title_text="System-Wide 50,000 point Sample", title_x=0.5)
+    gdf = retrieve_timeline()
+    if len(gdf) >= 150000:
+        gdf = gdf.sample(n=150000)
 
-    fig.write_html("docs/plots/dot_map.html")
+    gdf['Datetime'] = gdf['Datetime'].dt.strftime('%Y-%m-%d %H:%M:%S').astype(str)
+
+    #round speed to 1 decimal place
+    gdf.Speed = gdf.Speed.round(1)
+
+    gdf['Speed Data'] = gdf['Speed'].round(1)
+    gdf['colour'] = np.where(gdf['Speed Data'] > 35, 35, gdf['Speed Data'])
+    gdf['Speed'] = gdf['Speed Data'].astype(str) + " km/h"
+
+    kepler_config = json.load(open("kepler_configs/dot_map.json"))
+    map_1 = keplergl.KeplerGl(height=500, data={"Speed": gdf}, config=kepler_config)
+    map_1.save_to_html(file_name="docs/plots/dot_map.html", config=kepler_config, read_only=True)
 
     return
 
 def corridor_map():
-    corridors = gpd.read_file("corridors.geojson").set_crs("EPSG:4326").to_crs("EPSG:26910")
+    corridors = gpd.read_file("roads/corridors.geojson").set_crs("EPSG:4326").to_crs("EPSG:26910")
 
     #add names to each corridor: Mckenzie, Fort St West, Fort St East, Foul Bay, Henderson, Quadra
     corridors["corridor"] = ["Mckenzie", "Fort St West", "Fort St East", "Foul Bay", "Hillside", "Quadra","Douglas Core","Douglas North", "Pandora West", "Pandora East", "Shelbourne South", "Shelbourne North", "Johnson", "Oak Bay"]
@@ -235,24 +219,14 @@ def corridor_map():
 
     corridors.geometry = corridors.buffer(20).to_crs("EPSG:4326")
 
-    #map with plotly
-    fig = px.choropleth_mapbox(corridors, geojson=corridors.geometry, locations=corridors.index, color="Average Speed",
-                            mapbox_style="carto-positron",
-                            opacity=0.7,
-                            labels={'Average Speed':'Average Speed (km/hr)'},
-                            color_continuous_scale=["red", "yellow", "green"],
-                            #colour scale from 0 to 50
-                            range_color=(0, 50),
-                            zoom=11,
-                            center={'lat': 48.4566, 'lon': -123.3763},
-                            hover_data=['corridor', 'Average Speed']
-                            )
+    corridors['Speed Data'] = corridors['Average Speed'].round(1)
+    corridors['colour'] = np.where(corridors['Speed Data'] > 50, 50, corridors['Speed Data'])
+    corridors['Speed'] = corridors['Speed Data'].astype(str) + " km/h"
+
+    kepler_config = json.load(open("kepler_configs/speed_map.json"))
+    map_1 = keplergl.KeplerGl(height=1000, data={"Speed": corridors}, config=kepler_config)
+    map_1.save_to_html(file_name="docs/plots/corridor_map.html", config=kepler_config, read_only=True)
     
-    fig.update_traces(marker_line_width=0, hovertemplate="<b>%{customdata[0]}</b><br>Average Speed: %{customdata[1]} km/h<br>")
-    #add title, center it
-    fig.update_layout(title_text="Average Speed by Corridor", title_x=0.5)
-   
-    fig.write_html("docs/plots/corridor_map.html")
     return
 
 def all_routes_bar_chart():
@@ -480,3 +454,6 @@ def run_all():
     return
 
 run_all()
+
+#system_map()
+#dot_map()
