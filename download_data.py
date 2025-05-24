@@ -6,7 +6,7 @@ import geopandas as gpd
 import time
 import zipfile
 
-def download_static_gtfs():
+def download_latest_static_gtfs():
     gtfs_url = "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=48" #Victoria, BC Transit static data
 
     #delete everything in static folder, but not the folder itself
@@ -88,9 +88,9 @@ def download_roads():
 
         return
     
-def download_feeds():
+def download_transitland_feeds():
 
-    api_key = "yQLFQbjRexIgMYdzs5D0CsU57GXlGAZP"
+    api_key = os.environ.get('TRANSITLAND_API_KEY')
 
     headers = {
         'Api-Key': api_key,
