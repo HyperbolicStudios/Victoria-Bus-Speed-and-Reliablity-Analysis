@@ -1,30 +1,10 @@
-import time
 import datetime
-
-import pytz
-from pytz import timezone
-
-import requests
-import os
-from inspect import getsourcefile
-from os.path import abspath
-
 from urllib.request import urlopen
-from io import BytesIO
-from zipfile import ZipFile
-import shutil
-
-import traceback
+import os
 import pandas as pd
-import numpy as np
 
 import pymongo
 import dns.resolver
-from google.transit import gtfs_realtime_pb2
-
-import matplotlib.pyplot as plt
-
-import geopandas as gpd
 
 dns.resolver.default_resolver=dns.resolver.Resolver(configure=False)
 dns.resolver.default_resolver.nameservers=['8.8.8.8']
@@ -35,17 +15,6 @@ mydb = client.Cluster0
 mycol = mydb["transit_speed_data"]
 header_col = mydb["headers"]
 trip_id_col = mydb["trip_ids"]
-
-#from graphing import graph_variables
-#set active directory to file location
-directory = abspath(getsourcefile(lambda:0))
-#check if system uses forward or backslashes for writing directories
-if(directory.rfind("/") != -1):
-    newDirectory = directory[:(directory.rfind("/")+1)]
-else:
-    newDirectory = directory[:(directory.rfind("\\")+1)]
-os.chdir(newDirectory)
-
 
 def get_headers_df():
     #get all headers from mongodb and create a pandas dataframe. Return the dataframe. Columns are HeaderID and Header
