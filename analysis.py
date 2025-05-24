@@ -216,14 +216,14 @@ def corridor_map():
         avg_speed = filtered_timeline.Speed.mean()
         avg_speed = round(avg_speed, 1)
         corridors.loc[corridors.corridor == corridor, "Average Speed"] = avg_speed
-
-    corridors.geometry = corridors.buffer(20).to_crs("EPSG:4326")
+    
+    corridors = corridors.to_crs("EPSG:4326")
 
     corridors['Speed Data'] = corridors['Average Speed'].round(1)
     corridors['colour'] = np.where(corridors['Speed Data'] > 50, 50, corridors['Speed Data'])
     corridors['Speed'] = corridors['Speed Data'].astype(str) + " km/h"
 
-    kepler_config = json.load(open("kepler_configs/speed_map.json"))
+    kepler_config = json.load(open("kepler_configs/corridor_map.json"))
     map_1 = keplergl.KeplerGl(height=1000, data={"Speed": corridors}, config=kepler_config)
     map_1.save_to_html(file_name="docs/plots/corridor_map.html", config=kepler_config, read_only=True)
     
@@ -264,8 +264,8 @@ def all_routes_bar_chart():
 
 def runtimes_by_time():
     trips = summarize_trip_data()
-    #only use data from the past 30 days
-    trips = trips[trips.Date >= pd.to_datetime('today') - pd.Timedelta(days=30)]
+    #only use data from the last 30 days
+    trips = trips[trips.Date >= trips.Date.max() - pd.Timedelta(days=30)]
     #only pick trips that were on a weekday - use time_min (currently in epoch time) to get the day of the week. Will need to turn epoch to datetime
     trips = trips[trips.Time_min.apply(lambda x: pd.to_datetime(x, unit='s').weekday() < 5)]
 

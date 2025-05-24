@@ -1,4 +1,4 @@
-function showSystemMap(mapType) {
+function selectSystemMap(mapType) {
     var newURL = "plots/" + mapType + ".html";
     var iframe = document.getElementById('system_map');
     iframe.src = newURL;
@@ -10,8 +10,24 @@ function showSystemMap(mapType) {
     });
 
     // Add 'active' class to the clicked button
-    var activeButton = document.querySelector('button[onclick="showSystemMap(\'' + mapType + '\')"]');
+    var activeButton = document.querySelector('button[onclick="selectSystemMap(\'' + mapType + '\')"]');
     activeButton.classList.add('active');
+
+    //edit title (id = system_map_title)
+    if (mapType == "system_speed_map") {
+        newTitle = "Average Bus Speeds";
+        note = "";
+    } else if (mapType == "system_speed_peak_map") {
+        newTitle = "Average Bus Speeds at Peak (8am - 11am)";
+        note = "";
+    } else if (mapType == "system_delta_map") {
+        newTitle = "Difference of Peak Speeds vs Off-Peak Speeds";
+        note = "Difference between a segment's best operating speeds and worst operating speeds. Note that the time window of best/worst conditions varies between segments.";
+    }
+    
+    document.getElementById('system_map_title').innerHTML = newTitle;
+    document.getElementById('system_map_note').innerHTML = note;
+
 }
 
 function change_dropdown_IframeUrl(option, folder, chart_id) {
@@ -39,6 +55,7 @@ function setLinkClasses(linkNumber) {
     }
 }
 
+//change link class on scroll
 $(document).ready(function () {
     $(window).scroll(function () {
         pos1 = $('#p1').offset().top;

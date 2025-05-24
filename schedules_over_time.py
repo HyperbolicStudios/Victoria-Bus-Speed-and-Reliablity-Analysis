@@ -112,7 +112,7 @@ def analyze_feeds():
     main_df = pd.DataFrame(columns=['date', 'route_short_name', 'departure_time', 'runtime', 'speed'])
 
     for folder in os.listdir("Historical Feeds"):
-    #for folder in ['gtfs-2024']:
+    #for folder in ['gtfs-2023', 'gtfs-2024']:
         print(folder)
         calendar = pd.read_csv("Historical Feeds/" + folder + "/calendar.txt")
         calendar['start_date'] = pd.to_datetime(calendar['start_date'], format='%Y%m%d')
@@ -144,19 +144,14 @@ def analyze_feeds():
         shapes = pd.read_csv("Historical Feeds/" + folder + "/shapes.txt")
         shapes = aggregate_shapes(shapes)
         
+        #filter trips and stop_times by service_id
         trips = trips[trips['service_id'].isin(service_ids.service_id)]
-
         trips = trips.merge(routes[['route_id', 'route_short_name']])
-
-        #select trips and associated stop_times with the following route_short_name: 15, 26, 50, 4, 14
-        routes_of_interest = [15, 26, 50, 4, 14]
-        trips = trips[trips['route_short_name'].isin(routes_of_interest)]
         stop_times = stop_times[stop_times.trip_id.isin(trips.trip_id)]
         
-        # Find trip_ids where any stop_time has arrival_time or departure_time starting with 24, 25, or 26
+        # Remove trip_ids where any stop_time has arrival_time or departure_time starting with 24, 25, or 26
         mask = stop_times['arrival_time'].str.startswith(('24', '25', '26')) | stop_times['departure_time'].str.startswith(('24', '25', '26'))
         bad_trip_ids = stop_times.loc[mask, 'trip_id'].unique()
-        # Remove all stop_times for those trip_ids
         stop_times = stop_times[~stop_times['trip_id'].isin(bad_trip_ids)]
 
         stop_times['arrival_time'] = pd.to_datetime(stop_times['arrival_time'], format='%H:%M:%S')
@@ -172,41 +167,42 @@ def analyze_feeds():
         stop_times = stop_times.droplevel(1, axis=1)
 
         #add route_short_name and shape_id to stop_times
-        stop_times = stop_times.merge(trips[['trip_id', 'route_short_name', 'shape_id']])
+        stop_times = stop_times.merge(trips[['trip_id', 'route_short_name', 'trip_headsign', 'shape_id']])
         
         #convert runtime to minutes. Int object
         stop_times['runtime'] = stop_times['runtime'].dt.seconds / 60
         
         #select a specific, consistent direction for the analysis.
-        for route in stop_times.route_short_name.unique():
-            if route in [4, 14, 15, 26]:
-                headsign_keyword = "UVic"
-            else:
-                headsign_keyword = "Downtown"
+        keywords = ['UVic', 'Downtown', 'James Bay']
+        for route in trips.route_short_name.unique():
+            route_headsigns = trips[trips.route_short_name == route].trip_headsign.unique()
+            for keyword in keywords:
+                #if any of route_headsigns contain the keyword, use that as the headsign_keyword
+                headsign_keyword = next((headsign for headsign in route_headsigns if keyword.lower() in headsign.lower()), None)
+                if headsign_keyword is not None:
+                    break
+            if headsign_keyword is None:
+                continue
             
             #filter stop_times by route number and headsign_keyword
             route_stop_times = stop_times[stop_times['route_short_name'] == route]
-            relevant_trips = trips[trips['trip_headsign'].str.contains(headsign_keyword)]
-            route_stop_times = route_stop_times[route_stop_times['trip_id'].isin(relevant_trips.trip_id)]
+            route_stop_times = route_stop_times[route_stop_times['trip_headsign'].str.contains(headsign_keyword)]
 
             #merge with shapes
             route_stop_times = route_stop_times.merge(shapes[['shape_id', 'length']], on='shape_id')
 
-            #create a pivot table summarizing the mean length for each route
-            pivot = route_stop_times.pivot_table(index='route_short_name', values='length', aggfunc='mean')
-            
-            #print(len(route_stop_times), "trips for route", route, "on", service_date)
-            #Filter out short turn trips. Filter out any trip with a below-average length
-            route_stop_times = route_stop_times[route_stop_times['length'] > 0.75*pivot.loc[route]['length']]
-            #print(len(route_stop_times), "trips for route", route, "on", service_date, "after filtering")
-            #calculate speed in km/h
-            route_stop_times['speed'] = (route_stop_times['length']/1000) / (route_stop_times['runtime'] / 60)
+            #Filter out short-turn trips
+            pivot = route_stop_times.pivot_table(index='route_short_name', values='length', aggfunc='median')
+            route_stop_times = route_stop_times[route_stop_times['length'] > 0.9*pivot.loc[route]['length']]
 
-            #append data to the main dataframe. Add the folder name, service_date, the route, headsign, departure time, and runtime
+            route_stop_times['speed'] = (route_stop_times['length']/1000) / (route_stop_times['runtime'] / 60)
             route_stop_times['date'] = service_date
           
-            main_df = pd.concat([main_df, route_stop_times[['date', 'route_short_name', 'departure_time', 'runtime', 'speed']]], ignore_index=True)
+            main_df = pd.concat([main_df, route_stop_times[['date', 'route_short_name', 'trip_headsign', 'departure_time', 'runtime', 'speed']]], ignore_index=True)
 
+    #Route 50 was renumbered to be 95 in 2023. Replace all values of route_short_name 50 with 95
+    main_df = main_df.replace({'route_short_name': {50 : 95}})
+    
     #CREATE GRAPHS
     df = main_df.copy()
     df.date = df.date.dt.year
@@ -218,15 +214,13 @@ def analyze_feeds():
     routes = sorted(df.route_short_name.unique())
     years = sorted(df.date.unique())
 
-    for i in range(0, len(routes)):
-        route = routes[i]
+    for route in routes:
         fig = go.Figure()
 
         for j in range(0, len(years)):
             date = years[j]
             series = df[(df.route_short_name == route) & (df.date == date)]
 
-            #fade main_colour by an increment (older date -> more grey)
             colour = colours[j]
 
             #add line and plot departure_time vs speed. no marker
@@ -249,7 +243,7 @@ def analyze_feeds():
             )
         )
 
-        fig.write_html('docs/plots/historical_runtimes/runtimes route ' + str(route) + '.html')
+        fig.write_html('docs/plots/historical_runtimes/route ' + str(route) + '.html')
     
     return
 #download_feeds()
