@@ -1,3 +1,7 @@
-
-timeline.csv
-/historical speed data
+/historical speed data/data
+/.ipynb_checkpoints
+/__pycache__
+/.vscode
+/Historical Feeds
+roads/raw_download.geojson
+/static

@@ -42,6 +42,17 @@ a {
     font-weight: bold;
 }
 
+h3 {
+    font-size: 20px;
+    font-weight: 500;
+    margin: 20px 0px 0px 0px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 60px;
+}
+
 nav {
 
     height: 50%;
@@ -98,6 +109,16 @@ nav > p > a {
 }
 
 .page-options {
+    height: 90vh;
+    margin: 5% 5% 5% 0%;
+    background-color: white;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr 8fr .7fr;
+    padding-left: 2.5%;
+}
+
+.page-dropdown {
     height: 90vh;
     margin: 5% 5% 5% 0%;
     background-color: white;

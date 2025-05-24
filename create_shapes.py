@@ -1,101 +1,43 @@
+from shapely.geometry import Point
 import geopandas as gpd
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import os
-import time
-from inspect import getsourcefile
-from os.path import abspath
-
-from shapely.geometry import LineString, Point, MultiPoint
-
-from shapely.ops import split
-
-import plotly.graph_objs as go
-
+from gtfs_functions import Feed
 
 def generate_lines():
-    
-    all_lines = pd.DataFrame()
+    feed = Feed("static/gtfs.zip")
 
-    routes = {26:60,
-              95:0,
-              15:0,
-              4:0,
-              70:0,
-              2:100,
-              27:100,
-              11:112,
-              14:100,
-              7:100,
-              21:100,
-              6:100
+    roads = gpd.read_file("roads/raw_download.geojson")
+    roads = roads.to_crs("EPSG:26910")
 
-    }
+    #get route map
+    route_map = feed.segments.to_crs("EPSG:26910")
 
-    routes_static = pd.read_csv("static/routes.csv")
-    trips_static = pd.read_csv("static/trips.csv")
-    shapes_static = pd.read_csv("static/shapes.csv")
+    #filter roads to ensure we're only analyzing roads near route_map
+    roads['road_id'] = roads.index
 
-    for route in routes.keys():
-       
-        #looking in routes_static what the route_id is for the route
-        trip_num = routes[route]
-        route_id = routes_static[routes_static["route_short_name"] == route].iloc[0]["route_id"]
-        
-        #looking in trips_static what the shape_id is for the route
-        shape_id = trips_static[trips_static["route_id"] == route_id].iloc[trip_num]["shape_id"]
-        
-        shape = shapes_static[shapes_static["shape_id"] == shape_id]
+    # Create GeoDataFrames for start and end points
+    start_pts = roads.geometry.apply(lambda x: x.coords[0])
+    mid_pts = roads.geometry.apply(lambda x: x.interpolate(0.5, normalized=True))
+    end_pts = roads.geometry.apply(lambda x: x.coords[-1])
+    start_gdf = gpd.GeoDataFrame({'road_id': roads['road_id'], 'geometry': start_pts.apply(lambda x: Point(x))}, crs=roads.crs)
+    mid_gdf = gpd.GeoDataFrame({'road_id': roads['road_id'], 'geometry': mid_pts.apply(lambda x: Point(x))}, crs=roads.crs)
+    end_gdf = gpd.GeoDataFrame({'road_id': roads['road_id'], 'geometry': end_pts.apply(lambda x: Point(x))}, crs=roads.crs)
 
-        #turn into geopandas dataframe using shape_pt_lat and shape_pt_lon and set geographical CRS
-        shape = gpd.GeoDataFrame(shape, geometry=gpd.points_from_xy(shape.shape_pt_lon, shape.shape_pt_lat))
-        shape = shape.set_crs("EPSG:4326").to_crs("EPSG:26910")
-        
-        #shapes is a series of points, ordered by shape_pt_sequence. turn it into a line
-        shape = shape.sort_values(by="shape_pt_sequence")
-        line = LineString(shape["geometry"])
-        
-        length = line.length
-        
-        n = int(length/200)
+    start_gdf.geometry = start_gdf.buffer(20)
+    mid_gdf.geometry = mid_gdf.buffer(20)
+    end_gdf.geometry = end_gdf.buffer(20)
 
-        points = ([line.interpolate((i/n), normalized=True) for i in range(1, n)])
+    start_gdf = gpd.sjoin(start_gdf, route_map, how="inner", predicate="intersects")
+    mid_gdf = gpd.sjoin(mid_gdf, route_map, how="inner", predicate="intersects")
+    end_gdf = gpd.sjoin(end_gdf, route_map, how="inner", predicate="intersects")
 
-        #create lines from points
-        line = []
-        for i in range(0, len(points)-1):
-            line.append(LineString([points[i], points[i+1]]))
-        
-        line = pd.DataFrame(line, columns=["geometry"])
-        
-        all_lines = gpd.GeoDataFrame(pd.concat([all_lines,line]), geometry="geometry")
+    #get a list of buffer_ids that appear in both start and end gdf
+    start_ids = start_gdf.road_id.unique()
+    mid_ids = mid_gdf.road_id.unique()
+    end_ids = end_gdf.road_id.unique()
+    # Create a set of common buffer_ids
+    common_ids = set(start_ids) & set(mid_ids) & set(end_ids)
 
-    all_lines['buffer'] = all_lines.buffer(20)
-    all_lines['delete'] = False
+    #now filter roads by common_ids
+    roads = roads[roads['road_id'].isin(common_ids)]
 
-    for i in range(1, len(all_lines)):
-        #check if the ith line is COMPLETELY within the buffer of the i-1th line
-        if all_lines.iloc[i].geometry.within(all_lines.iloc[i-1].buffer):
-            #modify all_lines.delete to True for the ith line
-            all_lines.at[i, 'delete'] = True
-
-    all_lines = all_lines[all_lines['delete'] == False]
-    all_lines = all_lines.drop(columns=['buffer', 'delete'])
-    #turn to gdf
-    all_lines = gpd.GeoDataFrame(all_lines, geometry="geometry")
-    all_lines = all_lines.set_crs("EPSG:26910")
-
-    return(all_lines)
-
-def test():
-    all_lines = generate_lines()
-    #plot each line segment in a different color
-    all_lines['colour'] = np.random.choice(range(0, 20), all_lines.shape[0])
-
-    #plot by colour
-    fig, ax = plt.subplots(figsize=(10,10))
-    all_lines.plot(ax=ax, column='colour', cmap='tab20')
-    plt.show()
-    return
-
+    return roads
