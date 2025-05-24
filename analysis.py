@@ -10,7 +10,7 @@ import statsmodels.api as sm
 import keplergl
 import json
 
-from server_management import get_headers_df
+from download_from_mongodb import get_headers_df
 
 #Retrieve the entire timeline (as points). Used for the system and corridor maps
 def retrieve_timeline(file_limit = 1):
@@ -216,7 +216,7 @@ def corridor_map():
         avg_speed = filtered_timeline.Speed.mean()
         avg_speed = round(avg_speed, 1)
         corridors.loc[corridors.corridor == corridor, "Average Speed"] = avg_speed
-    
+
     corridors = corridors.to_crs("EPSG:4326")
 
     corridors['Speed Data'] = corridors['Average Speed'].round(1)
@@ -453,7 +453,4 @@ def run_all():
     runtimes_by_date()
     return
 
-run_all()
-
-#system_map()
-#dot_map()
+#run_all()
