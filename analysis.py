@@ -1,33 +1,32 @@
 import os
-import geopandas as gpd
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from create_shapes import generate_lines
-import plotly.express as px
-import plotly.graph_objects as go
-import statsmodels.api as sm
-import keplergl
 import json
 
+import numpy as np
+import pandas as pd
+import geopandas as gpd
+import statsmodels.api as sm
+
+import plotly.express as px
+import plotly.graph_objects as go
+import keplergl
+
+from create_shapes import generate_lines
 from download_from_mongodb import get_headers_df
 
-#Retrieve the entire timeline (as points). Used for the system and corridor maps
+#Retrieve the entire timeline (as points) from .csv files found in historical speed data/data/. Sample data can be found in the historical speed data/sample/ folder.
 def retrieve_timeline(file_limit = 1):
+    files = pd.DataFrame({'filename': os.listdir("historical speed data/data")})
+    files['start_date'] = files.filename.str.extract(r'(\d{4}-\d{2}-\d{2})')[0]
+    files = files.sort_values(by='start_date', ascending=False)
+   
     timeline = pd.DataFrame()
-    #for csv file in historical speed data/data:
-    files = os.listdir("historical speed data/data")
-    file_number = 0
-    while(file_number < file_limit):
-        filename = files[file_number]
-        file_number += 1
-        if filename.endswith(".csv"):
-            #read csv file
-            file = pd.read_csv("historical speed data/data/" + filename, dtype={"Time": np.int64, "Route": str, "Header": np.int64, "Trip ID": np.int64, "Speed": np.float64, "x": np.float64, "y": np.float64, "Occupancy Status": np.int64})
-            #append to timeline
+    
+    for i, row in files.iterrows():
+        if i < file_limit:
+            file = pd.read_csv("historical speed data/data/" + row['filename'], dtype={"Time": np.int64, "Route": str, "Header": np.int64, "Trip ID": np.int64, "Speed": np.float64, "x": np.float64, "y": np.float64, "Occupancy Status": np.int64})
             timeline = pd.concat([timeline, file], ignore_index=True)
 
-    #turn into geopandas dataframe based on x and y
+    #turn into geopandas dataframe based on x and y. Set to NAD UTM 83 10N
     timeline = gpd.GeoDataFrame(timeline, geometry=gpd.points_from_xy(timeline.x, timeline.y))
     timeline = timeline.set_crs("EPSG:4326").to_crs("EPSG:26910")
 
@@ -40,9 +39,8 @@ def retrieve_timeline(file_limit = 1):
 
 #Produce a summary of each trip-in-time (i.e. trip X on day Y), with average speed, runtime, etc.
 #Used for the runtimes by time and runtimes by date plots
-def summarize_trip_data():
-    timeline = retrieve_timeline()
-
+def summarize_trip_data(timeline):
+    
     #remove rows with a speed of 0 - speeds up processing and we don't want start/end iddling datapoints
     timeline = timeline[timeline.Speed != 0]
 
@@ -85,7 +83,7 @@ def summarize_trip_data():
 
 def system_map():
     route_segments = generate_lines()
-    timeline = retrieve_timeline()
+    timeline = retrieve_timeline(2)
  
     #create a buffer around each line in lines, and create a new geodataframe with the buffers
     route_segments['line_geom'] = route_segments['geometry']
@@ -177,12 +175,12 @@ def dot_map():
     return
 
 def corridor_map():
+    timeline = retrieve_timeline(2)
     corridors = gpd.read_file("roads/corridors.geojson").set_crs("EPSG:4326").to_crs("EPSG:26910")
 
     #add names to each corridor: Mckenzie, Fort St West, Fort St East, Foul Bay, Henderson, Quadra
     corridors["corridor"] = ["Mckenzie", "Fort St West", "Fort St East", "Foul Bay", "Hillside", "Quadra","Douglas Core","Douglas North", "Pandora West", "Pandora East", "Shelbourne South", "Shelbourne North", "Johnson", "Oak Bay"]
     corridors['Average Speed'] = 0
-    timeline = retrieve_timeline()
     
     selected_routes = {
         "Mckenzie": ["26"],
@@ -200,9 +198,6 @@ def corridor_map():
         "Johnson": ["2", "5", "27", "28"],
         "Oak Bay": ["2", "5"]
     }
-
-    #for map_name, y_var, title in [("system_speed_map", "Speed", "Average All-Day Speed"), ("system_speed_peak_map", "Speed", "Average Speed (8am-11am)"), ("system_peak_variability_map", "Speed Variability", "Speed Variability (8am-11am)")]:
-    
  
     for corridor in corridors.corridor:
         filtered_timeline = timeline[timeline.Route.isin(selected_routes[corridor])].reset_index()
@@ -230,12 +225,10 @@ def corridor_map():
     return
 
 def all_routes_bar_chart():
-    timeline = retrieve_timeline()
+    timeline = retrieve_timeline(2)
 
     timeline['Hour'] = timeline.Datetime.dt.hour
-
     timeline = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
-
     timeline.Route = timeline.Route.astype(str)
 
     pivot = pd.pivot_table(timeline, values='Speed', index='Route', aggfunc='mean')
@@ -263,7 +256,8 @@ def all_routes_bar_chart():
     return
 
 def runtimes_by_time():
-    trips = summarize_trip_data()
+    timeline = retrieve_timeline(2)
+    trips = summarize_trip_data(timeline)
     #only use data from the last 30 days
     trips = trips[trips.Date >= trips.Date.max() - pd.Timedelta(days=30)]
     #only pick trips that were on a weekday - use time_min (currently in epoch time) to get the day of the week. Will need to turn epoch to datetime
@@ -380,8 +374,8 @@ def runtimes_by_time():
     return  
 
 def runtimes_by_date():
-
-    trips = summarize_trip_data()
+    timeline = retrieve_timeline(100)
+    trips = summarize_trip_data(timeline)
 
     #turn trips Time_min into a datetime object
     trips['Time_min'] = pd.to_datetime(trips['Time_min'], unit='s', utc=True)
@@ -406,6 +400,7 @@ def runtimes_by_date():
     runtimes_df['top_percentile'] = runtimes_df['top_percentile'].round(2)
 
     trips['runtime'] = trips['runtime'].round(2)
+    trips = trips.sample(frac=0.1, random_state=1)
 
     for route in runtimes_df.Route.unique():
         df = runtimes_df[runtimes_df.Route == route]
@@ -413,16 +408,15 @@ def runtimes_by_date():
 
         colour = px.colors.qualitative.Plotly[0]
 
-        #scatter plot of the data
+        #scatter plot of the data with hover disabled for trips
         fig.add_trace(go.Scatter(
-                x=trips.Time_min, 
-                y=trips.runtime, 
-                mode='markers', 
-                name=str(route), 
-                marker=dict(color=colour, opacity=0.25), 
-                customdata=trips[['Route', 'label', 'Header']],
-                hovertemplate="<b>Runtime: %{y} minutes</b><br>Direction: %{customdata[2]}<br>Departure: %{customdata[1]}<br>Route: %{customdata[0]}<extra></extra>",
-                showlegend=False
+            x=trips.Time_min, 
+            y=trips.runtime, 
+            mode='markers', 
+            name=str(route), 
+            marker=dict(color=colour, opacity=0.25), 
+            showlegend=False,
+            hoverinfo='skip'
             ))
 
         fig.add_trace(go.Scatter(x=df.Date,
@@ -454,3 +448,4 @@ def run_all():
     return
 
 #run_all()
+runtimes_by_date()
