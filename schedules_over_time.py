@@ -131,6 +131,9 @@ def analyze_feeds():
 
     #Route 50 was renumbered to be 95 in 2023. Replace all values of route_short_name 50 with 95
     main_df = main_df.replace({'route_short_name': {50 : 95}})
+
+    #Route 5 was added as a branch of Route 2 in ~2022. Replace all values of route_short_name 5 with 2
+    main_df = main_df.replace({'route_short_name': {5 : 2}})
     
     #CREATE GRAPHS
     df = main_df.copy()
@@ -142,7 +145,7 @@ def analyze_feeds():
 
     routes = sorted(df.route_short_name.unique())
     years = sorted(df.date.unique())
-
+    
     for route in routes:
         fig = go.Figure()
 
@@ -157,6 +160,7 @@ def analyze_feeds():
 
         #add title
         fig.update_layout(
+             template='plotly_dark',
             title="End-to-end runtimes over time: route " + str(route),
             title_x=0.5
         )

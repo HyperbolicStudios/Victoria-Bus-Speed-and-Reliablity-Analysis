@@ -175,7 +175,7 @@ def dot_map():
     return
 
 def corridor_map():
-    timeline = retrieve_timeline(2)
+    timeline = retrieve_timeline(3)
     corridors = gpd.read_file("roads/corridors.geojson").set_crs("EPSG:4326").to_crs("EPSG:26910")
 
     #add names to each corridor: Mckenzie, Fort St West, Fort St East, Foul Bay, Henderson, Quadra
@@ -448,4 +448,6 @@ def run_all():
     return
 
 #run_all()
-runtimes_by_date()
+#runtimes_by_date()
+
+corridor_map()
