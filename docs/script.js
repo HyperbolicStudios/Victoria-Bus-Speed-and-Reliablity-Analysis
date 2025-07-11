@@ -22,7 +22,7 @@ function selectSystemMap(mapType) {
         note = "";
     } else if (mapType == "system_delta_map") {
         newTitle = "Difference of Peak Speeds vs Off-Peak Speeds";
-        note = "Difference between a segment's best operating speeds and worst operating speeds. Note that the time window of best/worst conditions varies between segments.";
+        note = "Difference between a segment's best operating speeds and worst operating speeds. A higher delta may indicate a better candidate for bus priority measures. Note that the time window of best/worst conditions varies between segments.";
     }
     
     document.getElementById('system_map_title').innerHTML = newTitle;
@@ -65,7 +65,7 @@ $(document).ready(function () {
         pos5 = $('#p5').offset().top;
         pos6 = $('#p6').offset().top;
         pos7 = $('#p7').offset().top;
-        pos8 = $('#Methodology').offset().top;
+        pos8 = $('#p8').offset().top;
 
         //basically, add or remove the class "active" to the links based on the scroll position
         var scrollPos = $(document).scrollTop() + 300;

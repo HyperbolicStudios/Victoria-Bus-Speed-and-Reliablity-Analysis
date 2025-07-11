@@ -6,9 +6,10 @@
     <script src="https://kit.fontawesome.com/895917e848.js" crossorigin="anonymous"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 
-    <link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
+      <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+    <link rel="manifest" href="assets/favicon/site.webmanifest">
   
     <!-- HTML Meta Tags -->
     <title>Bus Speed/Reliability Dashboard</title>
@@ -47,7 +48,8 @@
         <h2><a id="l8" href="#Methodology">Methodology</a></h2>
         <p>Built by <a href="https://markedwardson.com">Mark Edwardson</a></p>
         <p><a href="https://github.com/HyperbolicStudios/Victoria-Bus-Speed-and-Reliablity-Analysis">Project Github </a></p>
-    </nav>    
+    </nav>  
+
     <div class="main">
 
         <div id="p1" class="page-options">
@@ -85,7 +87,7 @@
                     <option value="1">Route 1</option>
                     <option value="2">Route 2</option>
                     <option value="3">Route 3</option>
-                    <option value="4">Route 4</option>
+                    <option selected="selected" value="4">Route 4</option>
                     <option value="5">Route 5</option>
                     <option value="6">Route 6</option>
                     <option value="7">Route 7</option>
@@ -163,7 +165,7 @@
                     <option value="12">Route 12</option>
                     <option value="13">Route 13</option>
                     <option value="14">Route 14</option>
-                    <option value="15">Route 15</option>
+                    <option selected="selected" value="15">Route 15</option>
                     <option value="17">Route 17</option>
                     <option value="21">Route 21</option>
                     <option value="22">Route 22</option>
@@ -200,7 +202,7 @@
                     <option value="1">Route 1</option>
                     <option value="2">Route 2</option>
                     <option value="3">Route 3</option>
-                    <option value="4">Route 4</option>
+                    <option selected="selected" value="4">Route 4</option>
                     <option value="5">Route 5</option>
                     <option value="6">Route 6</option>
                     <option value="7">Route 7</option>
@@ -259,13 +261,14 @@
             </div>
             <iframe id="speed-date-chart" src="plots/runtime_by_date/route 4.html" width="95%" height="100%"></iframe>
         </div>
-     
-        <h3 id="Methodology">Notes on Methodology</h3>
+        
+        <div id="p8" class="page-short">
+        <h3>Notes on Methodology</h3>
         <list>
             <li>GPS data is collected from BC Transit's live GTFS feed, published at 10-second intervals.</li>
             <li>Historical runtime analysis is based on archived GTFS feeds collected by <a href="https://transit.land/">Transit.land</a>. When making year-to-year comparisons, note that these runtimes exclude recovery, which is a significant drain on resources, particularly as runtime variability increases.</li>
             <li>All project code is on <a href="https://github.com/HyperbolicStudios/Victoria-Bus-Speed-and-Reliablity-Analysis">GitHub</a>.</li>
-
+        </list>
           </div>
     </section>
 

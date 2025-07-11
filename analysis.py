@@ -10,6 +10,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import keplergl
 
+import plotly.io as pio
+pio.templates.default = "plotly_dark"
+
 from create_shapes import generate_lines
 from download_from_mongodb import get_headers_df
 
@@ -246,7 +249,7 @@ def all_routes_bar_chart():
     
     color_discrete_map = {"Local": "#A8A8A8", "FTN": "#4A90E2", "RTN": "#F5A623"}
 
-    fig = px.bar(pivot, y="Speed", x="Route", orientation="v", color="Frequency", color_discrete_map=color_discrete_map, labels={"Speed": "Average Speed (km/hr)", "route": "Route"},
+    fig = px.bar(pivot, y="Speed", x="Route", orientation="v", color="Frequency", template="plotly_dark", color_discrete_map=color_discrete_map, labels={"Speed": "Average Speed (km/hr)", "route": "Route"},
     #order bars by speed, highest to lowest
     category_orders={"Route": pivot.Route})
 
@@ -448,6 +451,5 @@ def run_all():
     return
 
 #run_all()
-#runtimes_by_date()
-
-corridor_map()
+runtimes_by_date()
+#runtimes_by_time()
