@@ -44,6 +44,7 @@
         <h2><a id="l5" href="#p5">Speed by time of day</a></h2>
         <h2><a id="l6" href="#p6">Historical Runtimes</a></h2>
         <h2><a id="l7" href="#p7">Speed by day</a></h2>
+        <h2><a id="l8" href="#Methodology">Methodology</a></h2>
         <p>Built by <a href="https://markedwardson.com">Mark Edwardson</a></p>
         <p><a href="https://github.com/HyperbolicStudios/Victoria-Bus-Speed-and-Reliablity-Analysis">Project Github </a></p>
     </nav>    
@@ -65,16 +66,16 @@
             
         <div id="p2" class="page">
             <h3>150,000 Datapoint Sample</h3>
-            <iframe src="plots/dot_map.html" width="100%" height="100%" scrolling="no"></iframe>
+            <iframe src="plots/dot_map.html" width="100%" height="86%" scrolling="no"></iframe>
         </div>
        
         <div id="p3" class="page">
             <h3>Corridor Map</h3>
-            <iframe src="plots/corridor_map.html" width="95%" height="100%" scrolling="no"></iframe>
+            <iframe src="plots/corridor_map.html" width="100%" height="86%" scrolling="no"></iframe>
         </div>
 
         <div id="p4" class="page">
-            <iframe src="plots/all_routes_bar_chart.html" width="95%" height="100%"></iframe>
+            <iframe src="plots/all_routes_bar_chart.html" width="100%" height="100%"></iframe>
         </div>
 
         <div id="p5" class="page-dropdown">
@@ -258,9 +259,14 @@
             </div>
             <iframe id="speed-date-chart" src="plots/runtime_by_date/route 4.html" width="95%" height="100%"></iframe>
         </div>
-    </div>
+     
+        <h3 id="Methodology">Notes on Methodology</h3>
+        <list>
+            <li>GPS data is collected from BC Transit's live GTFS feed, published at 10-second intervals.</li>
+            <li>Historical runtime analysis is based on archived GTFS feeds collected by <a href="https://transit.land/">Transit.land</a>. When making year-to-year comparisons, note that these runtimes exclude recovery, which is a significant drain on resources, particularly as runtime variability increases.</li>
+            <li>All project code is on <a href="https://github.com/HyperbolicStudios/Victoria-Bus-Speed-and-Reliablity-Analysis">GitHub</a>.</li>
 
-
+          </div>
     </section>
 
 <footer id="footer">

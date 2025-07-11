@@ -15,8 +15,10 @@ body {background-color: #f1f1f1;}
 footer {
     height: 20vh;
     padding-top: 5%;
+    margin-top: 5%;
     background-color: black;
     width: 100%;}
+    
 
     footer>* {
         
@@ -34,7 +36,7 @@ footer {
 }
 
 a {
-    text-decoration: none;
+    text-decoration: underline;
     
 }
 
@@ -78,6 +80,10 @@ nav > h2 {
     height: 40px;
     text-align: center;
 
+}
+
+nav > h2 > a {
+    text-decoration: none;
 }
 
 nav > p {
@@ -138,4 +144,8 @@ button, select {
 
 button {
     cursor: pointer;
+}
+
+li {
+    margin: .5em 0 .5em 0;
 }

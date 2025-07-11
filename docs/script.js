@@ -46,7 +46,7 @@ function change_dropdown_IframeUrl(option, folder, chart_id) {
 //function to remove class "active" from all links, and add class "active" to the specified link
 //input: int from 1 to 7
 function setLinkClasses(linkNumber) {
-    for (var i = 1; i <= 7; i++) {
+    for (var i = 1; i <= 8; i++) {
         if (i != linkNumber) {
             $('#l' + i).removeClass('active');
         } else {
@@ -65,6 +65,7 @@ $(document).ready(function () {
         pos5 = $('#p5').offset().top;
         pos6 = $('#p6').offset().top;
         pos7 = $('#p7').offset().top;
+        pos8 = $('#Methodology').offset().top;
 
         //basically, add or remove the class "active" to the links based on the scroll position
         var scrollPos = $(document).scrollTop() + 300;
@@ -85,8 +86,12 @@ $(document).ready(function () {
         else if (scrollPos >= pos6 && scrollPos < pos7) {
             setLinkClasses(6);
         }
-        else if (scrollPos >= pos7) {
+        else if (scrollPos >= pos7 && scrollPos < pos8) {
             setLinkClasses(7);
         }
+        else if (scrollPos >= pos8) {
+            setLinkClasses(8);
+        }
+
     });
 });
