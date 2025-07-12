@@ -16,6 +16,8 @@ pio.templates.default = "plotly_dark"
 from create_shapes import generate_lines
 from download_from_mongodb import get_headers_df
 
+color_max_speed_value = 50 # Maximum speed value for color mapping in the maps. This is used to cap the speed values for visualization purposes.
+
 #Retrieve the entire timeline (as points) from .csv files found in historical speed data/data/. Sample data can be found in the historical speed data/sample/ folder.
 def retrieve_timeline(file_limit = 1):
     files = pd.DataFrame({'filename': os.listdir("historical speed data/data")})
@@ -84,9 +86,8 @@ def summarize_trip_data(timeline):
 
     return(runtimes_df)
 
-def system_map():
+def system_map(timeline):
     route_segments = generate_lines()
-    timeline = retrieve_timeline(2)
  
     #create a buffer around each line in lines, and create a new geodataframe with the buffers
     route_segments['line_geom'] = route_segments['geometry']
@@ -107,7 +108,7 @@ def system_map():
     gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs="EPSG:26910")
     gdf = gdf.to_crs("WGS-84")
     gdf['Speed Data'] = gdf['Speed'].round(1)
-    gdf['colour'] = np.where(gdf['Speed Data'] > 50, 50, gdf['Speed Data'])
+    gdf['colour'] = np.where(gdf['Speed Data'] > color_max_speed_value, color_max_speed_value, gdf['Speed Data'])
     gdf['Speed'] = gdf['Speed Data'].astype(str) + " km/h"
     
     kepler_config = json.load(open("kepler_configs/speed_map.json"))
@@ -121,7 +122,7 @@ def system_map():
     gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs="EPSG:26910")
     gdf = gdf.to_crs("WGS-84")
     gdf['Speed Data'] = gdf['Speed'].round(1)
-    gdf['colour'] = np.where(gdf['Speed Data'] > 50, 50, gdf['Speed Data'])
+    gdf['colour'] = np.where(gdf['Speed Data'] > color_max_speed_value, color_max_speed_value, gdf['Speed Data'])
     gdf['Speed'] = gdf['Speed Data'].astype(str) + " km/h"
     
     kepler_config = json.load(open("kepler_configs/speed_map.json"))
@@ -148,7 +149,7 @@ def system_map():
     gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs="EPSG:26910")
     gdf = gdf.to_crs("WGS-84")
     gdf['Speed Data'] = gdf['Speed Delta'].round(1)
-    gdf['colour'] = np.where(gdf['Speed Data'] > 50, 50, gdf['Speed Data'])
+    gdf['colour'] = np.where(gdf['Speed Data'] > color_max_speed_value, color_max_speed_value, gdf['Speed Data'])
     gdf['Speed Delta'] = gdf['Speed Data'].astype(str) + " km/h"
     
     kepler_config = json.load(open("kepler_configs/delta_map.json"))
@@ -157,8 +158,7 @@ def system_map():
         
     return
 
-def dot_map():
-    gdf = retrieve_timeline()
+def dot_map(gdf):
     if len(gdf) >= 150000:
         gdf = gdf.sample(n=150000)
 
@@ -168,7 +168,7 @@ def dot_map():
     gdf.Speed = gdf.Speed.round(1)
 
     gdf['Speed Data'] = gdf['Speed'].round(1)
-    gdf['colour'] = np.where(gdf['Speed Data'] > 35, 35, gdf['Speed Data'])
+    gdf['colour'] = np.where(gdf['Speed Data'] > color_max_speed_value, color_max_speed_value, gdf['Speed Data'])
     gdf['Speed'] = gdf['Speed Data'].astype(str) + " km/h"
 
     kepler_config = json.load(open("kepler_configs/dot_map.json"))
@@ -177,34 +177,41 @@ def dot_map():
 
     return
 
-def corridor_map():
-    timeline = retrieve_timeline(3)
+def corridor_map(timeline):
     corridors = gpd.read_file("roads/corridors.geojson").set_crs("EPSG:4326").to_crs("EPSG:26910")
+    timeline['Hour'] = timeline.Datetime.dt.hour
+    timeline = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
 
-    #add names to each corridor: Mckenzie, Fort St West, Fort St East, Foul Bay, Henderson, Quadra
-    corridors["corridor"] = ["Mckenzie", "Fort St West", "Fort St East", "Foul Bay", "Hillside", "Quadra","Douglas Core","Douglas North", "Pandora West", "Pandora East", "Shelbourne South", "Shelbourne North", "Johnson", "Oak Bay"]
     corridors['Average Speed'] = 0
-    
+
+    # New selected_routes dictionary with similar formatting and same routes
     selected_routes = {
-        "Mckenzie": ["26"],
-        "Fort St West": ["14", "15", "11"],
-        "Fort St East": ["14", "15", "11"],
+        "Mckenzie East": ["26"],
+        "Mckenzie Centre": ["26"],
+        "Mckenzie Quadra": ["26"],
+        "Fort West": ["14", "15", "11"],
+        "Fort East": ["14", "15", "11"],
         "Foul Bay": ["7", "15"],
         "Hillside": ["4"],
         "Quadra": ["6"],
-        "Douglas Core": ["95"],
+        "Douglas South": ["95"],
         "Douglas North": ["95"],
         "Pandora West": ["2", "5", "27", "28"],
         "Pandora East": ["2", "5", "27", "28"],
-        "Shelbourne South": ["27", "28"],
-        "Shelbourne North": ["27", "28"],
+        "Oak Bay": ["2", "5"],
         "Johnson": ["2", "5", "27", "28"],
-        "Oak Bay": ["2", "5"]
+        "Shelbourne South": ["27", "28"],
+        "Shelbourne North": ["27", "28"]
     }
- 
-    for corridor in corridors.corridor:
+    
+    for corridor in corridors['corridor name'].unique():
+        #print an error if the corridor name is not in the selected_routes dictionary
+        if corridor not in selected_routes:
+            print(f"ERROR: Corridor '{corridor}' not found in selected_routes dictionary.")
+            continue
+
         filtered_timeline = timeline[timeline.Route.isin(selected_routes[corridor])].reset_index()
-        buffer = corridors[corridors.corridor == corridor].buffer(20, cap_style=2)
+        buffer = corridors[corridors['corridor name'] == corridor].buffer(20, cap_style=2)
         buffer = gpd.GeoDataFrame(buffer, geometry=buffer, crs="EPSG:26910")
 
         #filter timeline to only include points within buffer
@@ -213,12 +220,12 @@ def corridor_map():
         #calculate average speed and update corridor dataframd
         avg_speed = filtered_timeline.Speed.mean()
         avg_speed = round(avg_speed, 1)
-        corridors.loc[corridors.corridor == corridor, "Average Speed"] = avg_speed
+        corridors.loc[corridors['corridor name'] == corridor, "Average Speed"] = avg_speed
 
     corridors = corridors.to_crs("EPSG:4326")
 
     corridors['Speed Data'] = corridors['Average Speed'].round(1)
-    corridors['colour'] = np.where(corridors['Speed Data'] > 50, 50, corridors['Speed Data'])
+    corridors['colour'] = np.where(corridors['Speed Data'] > color_max_speed_value, color_max_speed_value, corridors['Speed Data'])
     corridors['Speed'] = corridors['Speed Data'].astype(str) + " km/h"
 
     kepler_config = json.load(open("kepler_configs/corridor_map.json"))
@@ -227,8 +234,7 @@ def corridor_map():
     
     return
 
-def all_routes_bar_chart():
-    timeline = retrieve_timeline(2)
+def all_routes_bar_chart(timeline):
 
     timeline['Hour'] = timeline.Datetime.dt.hour
     timeline = timeline[(timeline.Hour == 8) | (timeline.Hour == 9) | (timeline.Hour == 10)]
@@ -258,8 +264,7 @@ def all_routes_bar_chart():
 
     return
 
-def runtimes_by_time():
-    timeline = retrieve_timeline(2)
+def runtimes_by_time(timeline):
     trips = summarize_trip_data(timeline)
     #only use data from the last 30 days
     trips = trips[trips.Date >= trips.Date.max() - pd.Timedelta(days=30)]
@@ -376,8 +381,7 @@ def runtimes_by_time():
 
     return  
 
-def runtimes_by_date():
-    timeline = retrieve_timeline(100)
+def runtimes_by_date(timeline):
     trips = summarize_trip_data(timeline)
 
     #turn trips Time_min into a datetime object
@@ -442,14 +446,14 @@ def runtimes_by_date():
 
 #run all functions
 def run_all():
-    system_map()
-    corridor_map()
-    all_routes_bar_chart()
-    runtimes_by_time()
-    dot_map()
-    runtimes_by_date()
+    timeline = retrieve_timeline(3)
+
+    #system_map(timeline)
+    #dot_map(timeline)
+    corridor_map(timeline)
+    """all_routes_bar_chart(timeline)
+    runtimes_by_time(timeline)
+    runtimes_by_date(retrieve_timeline(100))"""
     return
 
-#run_all()
-runtimes_by_date()
-#runtimes_by_time()
+run_all()

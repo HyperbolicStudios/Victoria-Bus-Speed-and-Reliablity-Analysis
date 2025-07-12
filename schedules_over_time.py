@@ -160,7 +160,7 @@ def analyze_feeds():
 
         #add title
         fig.update_layout(
-             template='plotly_dark',
+            template='plotly_dark',
             title="End-to-end runtimes over time: route " + str(route),
             title_x=0.5
         )
